@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.5)
 
 # Project Name
 set(PROJ_NAME RoboconCV)
@@ -23,11 +23,12 @@ FILE(GLOB HEADER_LIST "${CMAKE_SOURCE_DIR}/src/*.h")
 FILE(GLOB SOURCE_LIST "${CMAKE_SOURCE_DIR}/src/*.cpp")
 
 add_executable(${PROJ_NAME} ${SOURCE_LIST} ${HEADER_LIST})
-set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJ_NAME})
-set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_FLAGS "/wd4819")
+
+# These options is for Visual Studio on Windows
+# set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJ_NAME})
+# set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_FLAGS "/wd4819")
 
 # OpenCV
-#set(OpenCV_DIR "C:/ST42Data/Code/opencv3Src/install/x86/vc15/lib") # 更改此路径为OpenCVConfig.cmake的路径（库目录）
 find_package(OpenCV REQUIRED)
 
 if(OpenCV_FOUND)
@@ -46,10 +47,10 @@ if(PCL_FOUND)
 endif()
 
 # Realsense D435
-set(RealSense_DIR "C:/ST42Data/Code/librealsense/install") # 更改此路径为 librealsense SDK 安装目录
-
-set(RealSense_INCLUDE_DIR "${RealSense_DIR}/include")
-set(RealSense_LIB "${RealSense_DIR}/lib/realsense2.lib")
-
-include_directories(${PROJ_NAME} ${RealSense_INCLUDE_DIR})
-target_link_libraries(${PROJ_NAME} ${RealSense_LIB})
+find_package(realsense2 REQUIRED)
+ 
+if(realsense2_FOUND)
+    include_directories(${realsense2_INCLUDE_DIR})
+    target_include_directories(${PROJ_NAME} PRIVATE ${realsense2_INCLUDE_DIR})
+    target_link_libraries(${PROJ_NAME} ${realsense2_LIBRARY})
+endif()

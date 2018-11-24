@@ -8,14 +8,14 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/visualization/cloud_viewer.h>
-#include "calc_time.h"
 //#include <opencv2/opencv.hpp>
+#include <time.h>
 
 using namespace std;
 using namespace rs2;
 //using namespace cv;
 
-using pPointCloud = pcl::PointCloud<pcl::PointXYZRGBA>::Ptr;
+using pPointCloud = pcl::PointCloud<pcl::PointXYZ>::Ptr;
 
 class ActD435
 {
@@ -29,22 +29,20 @@ public:
 	void update(void);
 
 private:
-	tuple<uint8_t, uint8_t, uint8_t> getTexcolor(video_frame texture, texture_coordinate texcoords);
-	pPointCloud pointsToPointCloud(const rs2::points& points, const rs2::video_frame& color);
+	pPointCloud pointsToPointCloud(const rs2::points& points);
 
 private:
-	rs2::points     points;
-	rs2::pipeline   pipe;
-	rs2::config     cfg;
+	rs2::pointcloud  pc;
+	rs2::points      points;
 
-	rs2::align      align;
+	rs2::pipeline    pipe;
+	rs2::config      cfg;
 
-	pPointCloud     cloudFiltered;
+	pPointCloud      cloudFiltered;
 
 	pcl::visualization::CloudViewer viewer;
 
-	rs2::frameset   frameSet;
-	rs2::frameset   alignedFrameSet;
+	rs2::frameset    frameSet;
 };
 
 #endif
