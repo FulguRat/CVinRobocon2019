@@ -15,7 +15,9 @@ using namespace std;
 using namespace rs2;
 //using namespace cv;
 
-using pPointCloud = pcl::PointCloud<pcl::PointXYZ>::Ptr;
+using pointType = pcl::PointXYZRGB;
+using pointCloud = pcl::PointCloud<pointType>;
+using pPointCloud = pointCloud::Ptr;
 
 class ActD435
 {
@@ -29,6 +31,11 @@ public:
 	void update(void);
 
 private:
+	// For color-aligned point cloud
+	std::tuple<uint8_t, uint8_t, uint8_t> getColorTexture(rs2::video_frame texture, rs2::texture_coordinate Texture_XY);
+	pPointCloud pointsToPointCloud(const rs2::points& points, const rs2::video_frame& color);
+
+	// For point cloud without color
 	pPointCloud pointsToPointCloud(const rs2::points& points);
 
 private:
@@ -38,11 +45,14 @@ private:
 	rs2::pipeline    pipe;
 	rs2::config      cfg;
 
+	rs2::align       align;
+
 	pPointCloud      cloudFiltered;
 
 	pcl::visualization::CloudViewer viewer;
 
 	rs2::frameset    frameSet;
+	rs2::frameset    alignedFrameSet;
 };
 
 #endif
