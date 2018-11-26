@@ -30,6 +30,8 @@ public:
 	void init(void);
 	void update(void);
 
+	bool isStoped(void);
+
 private:
 	// For color-aligned point cloud
 	std::tuple<uint8_t, uint8_t, uint8_t> getColorTexture(rs2::video_frame texture, rs2::texture_coordinate Texture_XY);
@@ -49,10 +51,13 @@ private:
 
 	pPointCloud      cloudFiltered;
 
-	pcl::visualization::CloudViewer viewer;
+	// pcl::visualization::CloudViewer viewer;
 
 	rs2::frameset    frameSet;
 	rs2::frameset    alignedFrameSet;
+
+	bool			 stopFlag;
+	int				 stopCounter;
 };
 
 #endif

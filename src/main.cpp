@@ -13,6 +13,8 @@ int main(int argc, char* argv[])
 	while (true)
 	{
 		actD435.update();
+
+		if (actD435.isStoped()) { break; }
 	}
 
 	return EXIT_SUCCESS;

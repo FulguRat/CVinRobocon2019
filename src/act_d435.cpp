@@ -1,8 +1,10 @@
 #include "act_d435.h"
 
 ActD435::ActD435() : align(RS2_STREAM_COLOR), 
-					 cloudFiltered(new pointCloud), 
-					 viewer("Cloud Viewer")
+					 cloudFiltered(new pointCloud)/*, 
+					 viewer("Cloud Viewer")*/,
+                     stopFlag(false),
+                     stopCounter(0)
 {
 
 }
@@ -20,6 +22,12 @@ void ActD435::init(void)
 
 	//Instruct pipeline to start streaming with the requested configuration
 	pipe.start(cfg);
+
+    // Wait for frames from the camera to settle
+    for (int i = 0; i < 10; i++) 
+    {
+        frameSet = pipe.wait_for_frames(); //Drop several frames for auto-exposure
+    }
 }
 
 void ActD435::update(void)
@@ -27,7 +35,11 @@ void ActD435::update(void)
 	clock_t start = clock();
 
 	// Wait for the next set of frames from the camera
-	frameSet = pipe.wait_for_frames();
+    frameSet = pipe.wait_for_frames();
+
+    float totalTime = float(clock() - start) / float(CLOCKS_PER_SEC) * 1000.0f;
+	cout << "retrieve time:" << totalTime << "\t processing time:";
+    start = clock();
 
 	//Get processed aligned frame
 	alignedFrameSet = align.process(frameSet);
@@ -53,8 +65,8 @@ void ActD435::update(void)
 	pass.setFilterLimits(0.0, 4.0);
 	pass.filter(*cloudFiltered);
 
-	//blocks until the cloud is actually rendered
-	viewer.showCloud(cloudFiltered);
+	// //blocks until the cloud is actually rendered
+	// viewer.showCloud(cloudFiltered);
 
 	/*Mat depthImage(480, 640, CV_16UC1, (void*)alignedDepthFrame.get_data());
 	imshow("depth", depthImage);
@@ -64,10 +76,27 @@ void ActD435::update(void)
 
 	waitKey(1);*/
 
-	float totalTime = float(clock() - start) / float(CLOCKS_PER_SEC) * 1000.0f;
-	cout << totalTime << endl;
+	totalTime = float(clock() - start) / float(CLOCKS_PER_SEC) * 1000.0f;
+	cout << totalTime << " " << endl;
+
+    stopCounter++;
+    if (stopCounter >= 100)
+    {
+        pipe.stop();
+        stopFlag = true; 
+    }
 }
 
+//======================================================
+// getColorTexture
+// - Function is utilized to extract the RGB data from
+// a single point return R, G, and B values. 
+// Normals are stored as RGB components and
+// correspond to the specific depth (XYZ) coordinate.
+// By taking these normals and converting them to
+// texture coordinates, the RGB components can be
+// "mapped" to each individual point (XYZ).
+//======================================================
 std::tuple<uint8_t, uint8_t, uint8_t> ActD435::getColorTexture(rs2::video_frame texture, rs2::texture_coordinate Texture_XY)
 {
     // Get Width and Height coordinates of texture
@@ -92,6 +121,12 @@ std::tuple<uint8_t, uint8_t, uint8_t> ActD435::getColorTexture(rs2::video_frame 
     return std::tuple<uint8_t, uint8_t, uint8_t>(newText1, newText2, newText3);
 }
 
+//===================================================
+// pointsToPointCloud
+// - Function is utilized to fill a point cloud
+// object with depth and RGB data from a single
+// frame captured using the Realsense.
+//=================================================== 
 pPointCloud ActD435::pointsToPointCloud(const rs2::points& points, const rs2::video_frame& color)
 {
     // Object Declaration (Point Cloud)
@@ -160,4 +195,9 @@ pPointCloud ActD435::pointsToPointCloud(const rs2::points& points)
     }
 
     return cloud;
+}
+
+bool ActD435::isStoped(void)
+{
+    return stopFlag;
 }
