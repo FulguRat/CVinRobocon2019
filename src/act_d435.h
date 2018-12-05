@@ -8,8 +8,16 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/visualization/cloud_viewer.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/filters/extract_indices.h>
 //#include <opencv2/opencv.hpp>
-#include <time.h>
+#include <chrono>
+
+#include <pcl/features/normal_3d.h>
 
 using namespace std;
 using namespace rs2;
@@ -41,7 +49,7 @@ private:
 	pPointCloud pointsToPointCloud(const rs2::points& points);
 
 private:
-	rs2::pointcloud  pc;
+	rs2::pointcloud  rs2Cloud;
 	rs2::points      points;
 
 	rs2::pipeline    pipe;
@@ -49,15 +57,19 @@ private:
 
 	rs2::align       align;
 
-	pPointCloud      cloudFiltered;
+	pPointCloud		 srcCloud;
+	pPointCloud      backgroundCloud;
+	pPointCloud      filteredCloud;
+	pPointCloud      tmpCloud;
+	pPointCloud      dstCloud;
 
-	// pcl::visualization::CloudViewer viewer;
+	pcl::visualization::CloudViewer viewer;
 
 	rs2::frameset    frameSet;
 	rs2::frameset    alignedFrameSet;
 
-	bool			 stopFlag;
-	int				 stopCounter;
+	// bool			 stopFlag;
+	// int			 stopCounter;
 };
 
 #endif

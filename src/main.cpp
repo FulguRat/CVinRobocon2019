@@ -10,11 +10,9 @@ int main(int argc, char* argv[])
 
 	actD435.init();
 
-	while (true)
+	while (!actD435.isStoped())
 	{
 		actD435.update();
-
-		if (actD435.isStoped()) { break; }
 	}
 
 	return EXIT_SUCCESS;
