@@ -45,6 +45,8 @@ private:
 	pPointCloud      dstCloud;
 
     pcl::visualization::CloudViewer viewer;
+
+    pcl::PointIndices::Ptr indices;
 };
 
 #endif

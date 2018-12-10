@@ -59,6 +59,8 @@ pPointCloud ActD435::update(void)
 	rs2Points = rs2Cloud.calculate(alignedDepthFrame);
 	cloudByRS2 = pointsToPointCloud(rs2Points, colorFrame);
 
+    cout << " " << cloudByRS2->width << " " << cloudByRS2->height << " ";
+
     stop = chrono::steady_clock::now();
 	totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
 	cout << double(totalTime.count()) / 1000.0f << endl;

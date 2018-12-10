@@ -5,6 +5,7 @@ RobotLocator::RobotLocator() : srcCloud(new pointCloud),
                                filteredCloud(new pointCloud),
                                tmpCloud(new pointCloud),
                                dstCloud(new pointCloud),
+                               indices(new pcl::PointIndices),
 					           viewer("Cloud Viewer")
 {
 
@@ -31,21 +32,16 @@ void RobotLocator::preProcess()
 	pass.setFilterFieldName("x");
 	pass.setFilterLimits(-0.6, 0.6);
 	pass.filter(*filteredCloud);
-    // y
-    pass.setInputCloud(filteredCloud);
-	pass.setFilterFieldName("y");
-	pass.setFilterLimits(0.0, 0.6);
-	pass.filter(*filteredCloud);
     // z
 	pass.setInputCloud(filteredCloud);
 	pass.setFilterFieldName("z");
-	pass.setFilterLimits(0.0, 3.0);
+	pass.setFilterLimits(0.0, 4.0);
 	pass.filter(*filteredCloud);
 
     //-- Down Sampling
     pcl::VoxelGrid<pointType> passVG;
     passVG.setInputCloud(filteredCloud);
-    passVG.setLeafSize(0.01f, 0.01f, 0.01f);
+    passVG.setLeafSize(0.02f, 0.02f, 0.02f);
     passVG.filter(*filteredCloud);
 
     //-- Remove Outliers
@@ -54,6 +50,12 @@ void RobotLocator::preProcess()
     passSOR.setMeanK(50);
     passSOR.setStddevMulThresh(0.1);
     passSOR.filter(*filteredCloud);
+
+    // x indice
+    pass.setInputCloud(filteredCloud);
+	pass.setFilterFieldName("x");
+	pass.setFilterLimits(-0.6, -0.4);
+	pass.filter(indices->indices);
 
     copyPointCloud(*filteredCloud, *backgroundCloud);
 }
@@ -71,6 +73,7 @@ void RobotLocator::locateBeforeDune()
     seg.setModelType(pcl::SACMODEL_PLANE);
     seg.setMethodType(pcl::SAC_RANSAC);
     seg.setDistanceThreshold(0.02);
+    seg.setIndices(indices);
 
     //-- Create the filtering object
     pcl::ExtractIndices<pointType> extract;
@@ -80,7 +83,7 @@ void RobotLocator::locateBeforeDune()
     int srcPointNum = (int)filteredCloud->points.size();
     
     //-- Until most of the original cloud have been segmented
-    while (filteredCloud->points.size() > 0.05 * srcPointNum && i <= 1)
+    while (filteredCloud->points.size() > 0.05 * srcPointNum && i <= 0)
     {
         //-- Segment the largest planar component from the remaining cloud
         seg.setInputCloud(filteredCloud);
