@@ -25,7 +25,7 @@ int main(int argc, char* argv[])
 				break;
 
 			case BEFORE_DUNE:
-				fajLocator.locateBeforeDune();
+				fajLocator.removeHorizontalPlanes(fajLocator.getFilteredCloud());
 				break;
 
 			default:

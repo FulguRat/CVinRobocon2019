@@ -16,7 +16,11 @@
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/features/normal_3d.h>
+#include <Eigen/Dense>
 #include "act_d435.h"
+
+using namespace Eigen;
 
 class RobotLocator
 {
@@ -32,7 +36,12 @@ public:
 
     void locateBeforeDune();
 
+    pPointCloud removeHorizontalPlanes(pPointCloud cloud);
+
     bool isStoped(void);
+
+    inline pPointCloud getSrcCloud(void) { return srcCloud; }
+    inline pPointCloud getFilteredCloud(void) { return filteredCloud; }
 
 public:
     unsigned int status;
@@ -41,10 +50,11 @@ private:
     pPointCloud		 srcCloud;
 	pPointCloud      backgroundCloud;
 	pPointCloud      filteredCloud;
+    pPointCloud      verticalCloud;
 	pPointCloud      tmpCloud;
 	pPointCloud      dstCloud;
 
-    pcl::visualization::CloudViewer viewer;
+    pcl::visualization::CloudViewer srcViewer;
 
     pcl::PointIndices::Ptr indices;
 };
