@@ -48,7 +48,6 @@ public:
 
 private:
     pPointCloud		 srcCloud;
-	pPointCloud      backgroundCloud;
 	pPointCloud      filteredCloud;
     pPointCloud      verticalCloud;
 	pPointCloud      tmpCloud;
@@ -56,7 +55,7 @@ private:
 
     pcl::visualization::CloudViewer srcViewer;
 
-    pcl::PointIndices::Ptr indices;
+    pcl::PointIndices::Ptr indicesROI;
 };
 
 #endif

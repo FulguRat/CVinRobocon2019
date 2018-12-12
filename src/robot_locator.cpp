@@ -1,12 +1,11 @@
 #include "robot_locator.h"
 
 RobotLocator::RobotLocator() : srcCloud(new pointCloud),
-                               backgroundCloud(new pointCloud),
                                filteredCloud(new pointCloud),
                                verticalCloud(new pointCloud),
                                tmpCloud(new pointCloud),
                                dstCloud(new pointCloud),
-                               indices(new pcl::PointIndices),
+                               indicesROI(new pcl::PointIndices),
 					           srcViewer("Src Viewer")
 {
     
@@ -26,104 +25,86 @@ pPointCloud RobotLocator::setInputCloud(pPointCloud cloud)
 
 void RobotLocator::preProcess()
 {
-    //-- Pass Through Filter
+    //-- Pass through filter
     pcl::PassThrough<pointType> pass;
-    // x
+    
     pass.setInputCloud(srcCloud);
 	pass.setFilterFieldName("x");
 	pass.setFilterLimits(-0.6, 0.6);
 	pass.filter(*filteredCloud);
-    // z
+    
 	pass.setInputCloud(filteredCloud);
 	pass.setFilterFieldName("z");
 	pass.setFilterLimits(0.0, 4.0);
 	pass.filter(*filteredCloud);
 
-    //-- Down Sampling
+    //-- Down sampling
     pcl::VoxelGrid<pointType> passVG;
     passVG.setInputCloud(filteredCloud);
     passVG.setLeafSize(0.02f, 0.02f, 0.02f);
     passVG.filter(*filteredCloud);
 
-    //-- Remove Outliers
+    //-- Remove outliers
     pcl::StatisticalOutlierRemoval<pointType> passSOR;
     passSOR.setInputCloud(filteredCloud);
     passSOR.setMeanK(50);
     passSOR.setStddevMulThresh(0.1);
     passSOR.filter(*filteredCloud);
-
-    // x indice
-    pass.setInputCloud(filteredCloud);
-	pass.setFilterFieldName("x");
-	pass.setFilterLimits(-0.6, -0.4);
-	pass.filter(indices->indices);
-
-    copyPointCloud(*filteredCloud, *backgroundCloud);
 }
 
 void RobotLocator::locateBeforeDune()
 {
-    //-- Create the segmentation object
-    pcl::SACSegmentation<pointType> seg;
+    verticalCloud = removeHorizontalPlanes(filteredCloud); 
+
+    //-- ROI indice
+    pcl::PassThrough<pointType> pass;
+    pass.setInputCloud(verticalCloud);
+	pass.setFilterFieldName("x");
+	pass.setFilterLimits(-0.6, -0.2);
+	pass.filter(indicesROI->indices);
+
+    //-- Perform the plane segmentation with specific indices
     pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
     pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 
-    //-- If there are too many outliers
+    pcl::SACSegmentation<pointType> seg;
     seg.setOptimizeCoefficients(true);
-    //-- Mandatory conditions
     seg.setModelType(pcl::SACMODEL_PLANE);
     seg.setMethodType(pcl::SAC_RANSAC);
     seg.setDistanceThreshold(0.02);
-    seg.setIndices(indices);
+    seg.setIndices(indicesROI);
 
-    //-- Create the filtering object
+    seg.setInputCloud(verticalCloud);
+    seg.segment(*inliers, *coefficients);
+
+    //-- Extract the inliers
     pcl::ExtractIndices<pointType> extract;
+    pcl::PointIndices::Ptr tmpIndices(new pcl::PointIndices);
     dstCloud->clear();
 
-    int i = 0; // Test var
-    int srcPointNum = (int)filteredCloud->points.size();
+    extract.setInputCloud(verticalCloud);
+    extract.setIndices(inliers);
+    extract.setNegative(false);
+    extract.filter(tmpIndices->indices);
     
-    //-- Until most of the original cloud have been segmented
-    while (filteredCloud->points.size() > 0.05 * srcPointNum && i <= 0)
-    {
-        //-- Segment the largest planar component from the remaining cloud
-        seg.setInputCloud(filteredCloud);
-        seg.segment(*inliers, *coefficients);
-        
-        if (inliers->indices.size() == 0)
-        {
-            std::cerr << "Could not estimate a planar model for the given dataset." << std::endl;
-            break;
-        }
-
-        //-- Extract the inliers
-        extract.setInputCloud(filteredCloud);
-        extract.setIndices(inliers);
-        extract.setNegative(false);
-        extract.filter(*tmpCloud);
-        copyPointCloud(*tmpCloud, *dstCloud);
-
-        //-- Copy the rest part to filteredCloud
-        extract.setNegative(true);
-        extract.filter(*tmpCloud);
-        filteredCloud.swap(tmpCloud);
-
-        i++;
-    }
-
     //-- Change the color of the extracted part for debuging
-    for (int i = 0; i < dstCloud->points.size(); i++)
+    for (int i = 0; i < tmpIndices->indices.size(); i++)
     {
-        dstCloud->points[i].r = 255;
-        dstCloud->points[i].g = 0;
-        dstCloud->points[i].b = 0;
+        verticalCloud->points[tmpIndices->indices[i]].r = 234;
+        verticalCloud->points[tmpIndices->indices[i]].g = 67;
+        verticalCloud->points[tmpIndices->indices[i]].b = 53;
     }
-    *backgroundCloud += *dstCloud;
+
+    // //-- Copy the rest part to tmpCloud
+    // extract.setNegative(true);
+    // extract.filter(*tmpCloud);
+
+    srcViewer.showCloud(verticalCloud);
 }
 
 pPointCloud RobotLocator::removeHorizontalPlanes(pPointCloud cloud)
 {
-    verticalCloud->points.clear();
+    verticalCloud->clear();
     pointType tmpPoint;
 
     //-- Plane model segmentation
@@ -181,7 +162,12 @@ pPointCloud RobotLocator::removeHorizontalPlanes(pPointCloud cloud)
         }
 	}
 
-    srcViewer.showCloud(verticalCloud);
+    //-- Remove Outliers
+    pcl::StatisticalOutlierRemoval<pointType> passSOR;
+    passSOR.setInputCloud(verticalCloud);
+    passSOR.setMeanK(50);
+    passSOR.setStddevMulThresh(0.1);
+    passSOR.filter(*verticalCloud);
 
     return verticalCloud;
 }
