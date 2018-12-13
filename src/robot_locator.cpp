@@ -44,6 +44,12 @@ void RobotLocator::init(ActD435& d435)
     {
         srcCloud = thisD435->update();
 
+        pcl::PassThrough<pointType> pass; 
+        pass.setInputCloud(srcCloud);
+        pass.setFilterFieldName("z");
+        pass.setFilterLimits(0.0, 4.0);
+        pass.filter(*srcCloud);
+
         pcl::VoxelGrid<pointType> passVG;
         passVG.setInputCloud(srcCloud);
         passVG.setLeafSize(0.02f, 0.02f, 0.02f);
@@ -65,12 +71,22 @@ void RobotLocator::init(ActD435& d435)
         groundCoefficients->values[1] += coefficients->values[1];
         groundCoefficients->values[2] += coefficients->values[2];
         groundCoefficients->values[3] += coefficients->values[3];
+
+        cout << "Model coefficients: " << coefficients->values[0] << " " 
+                                      << coefficients->values[1] << " "
+                                      << coefficients->values[2] << " " 
+                                      << coefficients->values[3] << endl;
     }
 
     groundCoefficients->values[0] /= cycleNum;
     groundCoefficients->values[1] /= cycleNum;
     groundCoefficients->values[2] /= cycleNum;
     groundCoefficients->values[3] /= cycleNum;
+
+    cout << "Ground coefficients: " << groundCoefficients->values[0] << " " 
+                                      << groundCoefficients->values[1] << " "
+                                      << groundCoefficients->values[2] << " " 
+                                      << groundCoefficients->values[3] << endl;
 
     cout << "Done initialization." << endl;
 }
@@ -89,7 +105,7 @@ void RobotLocator::preProcess(void)
     
     pass.setInputCloud(srcCloud);
 	pass.setFilterFieldName("x");
-	pass.setFilterLimits(-2.0, 2.0);
+	pass.setFilterLimits(-0.6, 0.6);
 	pass.filter(*filteredCloud);
     
 	pass.setInputCloud(filteredCloud);
@@ -126,9 +142,21 @@ pcl::ModelCoefficients::Ptr RobotLocator::extractGroundCoeff(pPointCloud cloud)
 	seg.setInputCloud(cloud);
 	seg.segment(*inliers, *coefficients);
 
-    //-- If plane coefficients changed a lot
+    //-- If plane coefficients changed a little, refresh it. else not
+    Vector3d vecNormalLast(groundCoefficients->values[0], groundCoefficients->values[1], groundCoefficients->values[2]);
+	Vector3d vecNormalThis(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
+    double angleCosine = abs(vecNormalLast.dot(vecNormalThis) / (vecNormalLast.norm() * vecNormalThis.norm()));
 
-    return coefficients;
+    double originDistanceLast = groundCoefficients->values[3] / vecNormalLast.norm();
+    double originDistanceThis = coefficients->values[3] / vecNormalThis.norm();
+    double distDifference = abs(originDistanceThis - originDistanceLast);
+
+    if (angleCosine > 0.8f && distDifference < 0.04f)
+    {
+        groundCoefficients = coefficients;
+    }
+
+    return groundCoefficients;
 }
 
 pPointCloud RobotLocator::removeHorizontalPlanes(pPointCloud cloud)
@@ -136,21 +164,11 @@ pPointCloud RobotLocator::removeHorizontalPlanes(pPointCloud cloud)
     verticalCloud->clear();
     pointType tmpPoint;
 
-    //-- Plane model segmentation
-    pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
-	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
-
-	pcl::SACSegmentation<pointType> seg;
-	seg.setOptimizeCoefficients(true);
-	seg.setModelType(pcl::SACMODEL_PLANE);
-	seg.setMethodType(pcl::SAC_RANSAC);
-	seg.setDistanceThreshold(0.01);
-
-	seg.setInputCloud(cloud);
-	seg.segment(*inliers, *coefficients);
+    //-- Extract ground coefficients with anti-interference function
+    extractGroundCoeff(cloud);
 
     //-- Vector of plane normal and every point on the plane
-    Vector3d vecNormal(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
+    Vector3d vecNormal(groundCoefficients->values[0], groundCoefficients->values[1], groundCoefficients->values[2]);
 	Vector3d vecPoint(0, 0, 0);
 
     //-- Plane normal estimating
@@ -171,11 +189,9 @@ pPointCloud RobotLocator::removeHorizontalPlanes(pPointCloud cloud)
 		vecPoint[1] = normal->points[i].normal_y;
 		vecPoint[2] = normal->points[i].normal_z;
 
-		double angleCosine = (vecNormal[0] * vecPoint[0] + vecNormal[1] * vecPoint[1] + vecNormal[2] * vecPoint[2]) / 
-			sqrt(pow(vecNormal[0], 2) + pow(vecNormal[1], 2) + pow(vecNormal[2], 2)) * 
-            sqrt(pow(vecPoint[0], 2) + pow(vecPoint[1], 2) + pow(vecPoint[2], 2));
+		double angleCosine = abs(vecNormal.dot(vecPoint) / (vecNormal.norm() * vecPoint.norm()));
 
-		if (abs(angleCosine) > 0.80f)
+		if (angleCosine > 0.80f)
 		{
 			cloud->points[i].r = 66;
 			cloud->points[i].g = 133;
@@ -205,7 +221,7 @@ void RobotLocator::locateBeforeDune(void)
 {
     verticalCloud = removeHorizontalPlanes(filteredCloud); 
 
-    srcViewer.showCloud(verticalCloud);
+    // srcViewer.showCloud(verticalCloud);
 
     //-- ROI indice
     pcl::PassThrough<pointType> pass;
@@ -269,7 +285,7 @@ void RobotLocator::locateBeforeDune(void)
         verticalCloud->points[tmpIndices->indices[i]].b = 83;
     }
 
-    // srcViewer.showCloud(verticalCloud);
+    srcViewer.showCloud(verticalCloud);
 }
 
 bool RobotLocator::isStoped(void)

@@ -38,7 +38,7 @@ pPointCloud ActD435::update(void)
 
     chrono::steady_clock::time_point stop = chrono::steady_clock::now();
     auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
-	cout << "retrieve time:" << double(totalTime.count()) / 1000.0f << "\t processing time:";
+	// cout << "retrieve time:" << double(totalTime.count()) / 1000.0f << "\t processing time:";
     start = chrono::steady_clock::now();
 
 	//-- Get processed aligned frame
@@ -61,7 +61,7 @@ pPointCloud ActD435::update(void)
 
     stop = chrono::steady_clock::now();
 	totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
-	cout << double(totalTime.count()) / 1000.0f << endl;
+	// cout << double(totalTime.count()) / 1000.0f << endl;
 
     return cloudByRS2;
 }
