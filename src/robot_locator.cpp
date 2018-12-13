@@ -6,6 +6,7 @@ RobotLocator::RobotLocator() : srcCloud(new pointCloud),
                                tmpCloud(new pointCloud),
                                dstCloud(new pointCloud),
                                indicesROI(new pcl::PointIndices),
+                               groundCoefficients(new pcl::ModelCoefficients),
 					           srcViewer("Src Viewer")
 {
     
@@ -16,21 +17,79 @@ RobotLocator::~RobotLocator()
 
 }
 
-pPointCloud RobotLocator::setInputCloud(pPointCloud cloud)
+void RobotLocator::init(ActD435& d435)
+{
+    cout << "Initializing locator..." << endl;
+
+    //-- Set input device
+    thisD435 = &d435;
+    
+    //-- Drop several frames for stable point cloud
+    for (int i = 0; i < 3; i++)
+    {
+        thisD435->update();
+    }
+
+    //-- Initialize ground coefficients
+    cout << "Initializing ground coefficients..." << endl;
+
+    groundCoefficients->values.clear();
+    groundCoefficients->values.push_back(0.0f);
+    groundCoefficients->values.push_back(0.0f);
+    groundCoefficients->values.push_back(0.0f);
+    groundCoefficients->values.push_back(0.0f);
+
+    const int cycleNum = 10;
+    for (int i = 0; i < cycleNum; i++)
+    {
+        srcCloud = thisD435->update();
+
+        pcl::VoxelGrid<pointType> passVG;
+        passVG.setInputCloud(srcCloud);
+        passVG.setLeafSize(0.02f, 0.02f, 0.02f);
+        passVG.filter(*srcCloud);
+
+        pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+        pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+
+        pcl::SACSegmentation<pointType> seg;
+        seg.setOptimizeCoefficients(true);
+        seg.setModelType(pcl::SACMODEL_PLANE);
+        seg.setMethodType(pcl::SAC_RANSAC);
+        seg.setDistanceThreshold(0.01);
+
+        seg.setInputCloud(srcCloud);
+        seg.segment(*inliers, *coefficients);
+
+        groundCoefficients->values[0] += coefficients->values[0];
+        groundCoefficients->values[1] += coefficients->values[1];
+        groundCoefficients->values[2] += coefficients->values[2];
+        groundCoefficients->values[3] += coefficients->values[3];
+    }
+
+    groundCoefficients->values[0] /= cycleNum;
+    groundCoefficients->values[1] /= cycleNum;
+    groundCoefficients->values[2] /= cycleNum;
+    groundCoefficients->values[3] /= cycleNum;
+
+    cout << "Done initialization." << endl;
+}
+
+pPointCloud RobotLocator::updateCloud(void)
 {
     //-- copy the pointer to srcCloud
-    srcCloud = cloud;
+    srcCloud = thisD435->update();
     return srcCloud;
 }
 
-void RobotLocator::preProcess()
+void RobotLocator::preProcess(void)
 {
     //-- Pass through filter
     pcl::PassThrough<pointType> pass;
     
     pass.setInputCloud(srcCloud);
 	pass.setFilterFieldName("x");
-	pass.setFilterLimits(-0.6, 0.6);
+	pass.setFilterLimits(-2.0, 2.0);
 	pass.filter(*filteredCloud);
     
 	pass.setInputCloud(filteredCloud);
@@ -52,54 +111,24 @@ void RobotLocator::preProcess()
     passSOR.filter(*filteredCloud);
 }
 
-void RobotLocator::locateBeforeDune()
+pcl::ModelCoefficients::Ptr RobotLocator::extractGroundCoeff(pPointCloud cloud)
 {
-    verticalCloud = removeHorizontalPlanes(filteredCloud); 
-
-    //-- ROI indice
-    pcl::PassThrough<pointType> pass;
-    pass.setInputCloud(verticalCloud);
-	pass.setFilterFieldName("x");
-	pass.setFilterLimits(-0.6, -0.2);
-	pass.filter(indicesROI->indices);
-
-    //-- Perform the plane segmentation with specific indices
-    pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+    //-- Plane model segmentation
     pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
 
-    pcl::SACSegmentation<pointType> seg;
-    seg.setOptimizeCoefficients(true);
-    seg.setModelType(pcl::SACMODEL_PLANE);
-    seg.setMethodType(pcl::SAC_RANSAC);
-    seg.setDistanceThreshold(0.02);
-    seg.setIndices(indicesROI);
+	pcl::SACSegmentation<pointType> seg;
+	seg.setOptimizeCoefficients(true);
+	seg.setModelType(pcl::SACMODEL_PLANE);
+	seg.setMethodType(pcl::SAC_RANSAC);
+	seg.setDistanceThreshold(0.01);
 
-    seg.setInputCloud(verticalCloud);
-    seg.segment(*inliers, *coefficients);
+	seg.setInputCloud(cloud);
+	seg.segment(*inliers, *coefficients);
 
-    //-- Extract the inliers
-    pcl::ExtractIndices<pointType> extract;
-    pcl::PointIndices::Ptr tmpIndices(new pcl::PointIndices);
-    dstCloud->clear();
+    //-- If plane coefficients changed a lot
 
-    extract.setInputCloud(verticalCloud);
-    extract.setIndices(inliers);
-    extract.setNegative(false);
-    extract.filter(tmpIndices->indices);
-    
-    //-- Change the color of the extracted part for debuging
-    for (int i = 0; i < tmpIndices->indices.size(); i++)
-    {
-        verticalCloud->points[tmpIndices->indices[i]].r = 234;
-        verticalCloud->points[tmpIndices->indices[i]].g = 67;
-        verticalCloud->points[tmpIndices->indices[i]].b = 53;
-    }
-
-    // //-- Copy the rest part to tmpCloud
-    // extract.setNegative(true);
-    // extract.filter(*tmpCloud);
-
-    srcViewer.showCloud(verticalCloud);
+    return coefficients;
 }
 
 pPointCloud RobotLocator::removeHorizontalPlanes(pPointCloud cloud)
@@ -170,6 +199,77 @@ pPointCloud RobotLocator::removeHorizontalPlanes(pPointCloud cloud)
     passSOR.filter(*verticalCloud);
 
     return verticalCloud;
+}
+
+void RobotLocator::locateBeforeDune(void)
+{
+    verticalCloud = removeHorizontalPlanes(filteredCloud); 
+
+    srcViewer.showCloud(verticalCloud);
+
+    //-- ROI indice
+    pcl::PassThrough<pointType> pass;
+    pass.setInputCloud(verticalCloud);
+	pass.setFilterFieldName("x");
+	pass.setFilterLimits(-0.6, -0.2);
+	pass.filter(indicesROI->indices);
+
+    //-- Perform the plane segmentation with specific indices
+    pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+    pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+
+    pcl::SACSegmentation<pointType> seg;
+    seg.setOptimizeCoefficients(true);
+    seg.setModelType(pcl::SACMODEL_PLANE);
+    seg.setMethodType(pcl::SAC_RANSAC);
+    seg.setDistanceThreshold(0.02);
+    seg.setIndices(indicesROI);
+
+    seg.setInputCloud(verticalCloud);
+    seg.segment(*inliers, *coefficients);
+
+    //-- Extract the inliers
+    pcl::ExtractIndices<pointType> extract;
+    pcl::PointIndices::Ptr tmpIndices(new pcl::PointIndices);
+
+    extract.setInputCloud(verticalCloud);
+    extract.setIndices(inliers);
+    extract.setNegative(false);
+    extract.filter(tmpIndices->indices);
+    
+    //-- Change the color of the extracted part for debuging
+    for (int i = 0; i < tmpIndices->indices.size(); i++)
+    {
+        verticalCloud->points[tmpIndices->indices[i]].r = 234;
+        verticalCloud->points[tmpIndices->indices[i]].g = 67;
+        verticalCloud->points[tmpIndices->indices[i]].b = 53;
+    }
+
+    //-- Extract indices for the rest part
+    extract.setNegative(true);
+    extract.filter(indicesROI->indices);
+
+    //-- Perform the plane segmentation for the rest part
+    seg.setDistanceThreshold(0.01);
+    seg.setIndices(indicesROI);
+    seg.setInputCloud(verticalCloud);
+    seg.segment(*inliers, *coefficients);
+
+    //-- Extract the inliers
+    extract.setInputCloud(verticalCloud);
+    extract.setIndices(inliers);
+    extract.setNegative(false);
+    extract.filter(tmpIndices->indices);
+    
+    //-- Change the color of the extracted part for debuging
+    for (int i = 0; i < tmpIndices->indices.size(); i++)
+    {
+        verticalCloud->points[tmpIndices->indices[i]].r = 52;
+        verticalCloud->points[tmpIndices->indices[i]].g = 168;
+        verticalCloud->points[tmpIndices->indices[i]].b = 83;
+    }
+
+    // srcViewer.showCloud(verticalCloud);
 }
 
 bool RobotLocator::isStoped(void)

@@ -7,15 +7,16 @@ using namespace std;
 
 int main(int argc, char* argv[])
 {
-	ActD435 		actD435;
+	ActD435			fajD435;
 	RobotLocator 	fajLocator;
 
-	actD435.init();
+	fajD435.init();
+	fajLocator.init(fajD435);
 	fajLocator.status = STARTUP_INITIAL;
 
 	while (!fajLocator.isStoped())
 	{
-		fajLocator.setInputCloud(actD435.update());
+		fajLocator.updateCloud();
 		fajLocator.preProcess();
 		
 		switch (fajLocator.status)

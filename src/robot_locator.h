@@ -30,13 +30,17 @@ public:
 	RobotLocator& operator=(const RobotLocator&) = delete;
 	~RobotLocator();
 
-    pPointCloud setInputCloud(pPointCloud cloud);
+    void init(ActD435& d435);
 
-    void preProcess();
+    pPointCloud updateCloud(void);
 
-    void locateBeforeDune();
+    void preProcess(void);
 
     pPointCloud removeHorizontalPlanes(pPointCloud cloud);
+
+    pcl::ModelCoefficients::Ptr extractGroundCoeff(pPointCloud cloud);
+
+    void locateBeforeDune(void);
 
     bool isStoped(void);
 
@@ -47,11 +51,15 @@ public:
     unsigned int status;
 
 private:
-    pPointCloud		 srcCloud;
-	pPointCloud      filteredCloud;
-    pPointCloud      verticalCloud;
-	pPointCloud      tmpCloud;
-	pPointCloud      dstCloud;
+    ActD435*        thisD435;
+
+    pPointCloud		srcCloud;
+	pPointCloud     filteredCloud;
+    pPointCloud     verticalCloud;
+	pPointCloud     tmpCloud;
+	pPointCloud     dstCloud;
+
+    pcl::ModelCoefficients::Ptr groundCoefficients;
 
     pcl::visualization::CloudViewer srcViewer;
 

@@ -22,7 +22,7 @@ void ActD435::init(void)
 	pipe.start(cfg);
 
     //-- Wait for frames from the camera to settle
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 5; i++)
     {
         //Drop several frames for auto-exposure
         frameSet = pipe.wait_for_frames();
@@ -58,8 +58,6 @@ pPointCloud ActD435::update(void)
 	//-- Generate the pointcloud and texture mappings
 	rs2Points = rs2Cloud.calculate(alignedDepthFrame);
 	cloudByRS2 = pointsToPointCloud(rs2Points, colorFrame);
-
-    cout << " " << cloudByRS2->width << " " << cloudByRS2->height << " ";
 
     stop = chrono::steady_clock::now();
 	totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
