@@ -3,7 +3,6 @@
 RobotLocator::RobotLocator() : srcCloud(new pointCloud),
                                filteredCloud(new pointCloud),
                                verticalCloud(new pointCloud),
-                               tmpCloud(new pointCloud),
                                dstCloud(new pointCloud),
                                indicesROI(new pcl::PointIndices),
                                groundCoefficients(new pcl::ModelCoefficients),
@@ -47,7 +46,7 @@ void RobotLocator::init(ActD435& d435)
         pcl::PassThrough<pointType> pass; 
         pass.setInputCloud(srcCloud);
         pass.setFilterFieldName("z");
-        pass.setFilterLimits(0.0, 4.0);
+        pass.setFilterLimits(0.0, 3.0);
         pass.filter(*srcCloud);
 
         pcl::VoxelGrid<pointType> passVG;
@@ -110,7 +109,7 @@ void RobotLocator::preProcess(void)
     
 	pass.setInputCloud(filteredCloud);
 	pass.setFilterFieldName("z");
-	pass.setFilterLimits(0.0, 4.0);
+	pass.setFilterLimits(0.0, 4.5);
 	pass.filter(*filteredCloud);
 
     //-- Down sampling
@@ -162,6 +161,7 @@ pcl::ModelCoefficients::Ptr RobotLocator::extractGroundCoeff(pPointCloud cloud)
 pPointCloud RobotLocator::removeHorizontalPlanes(pPointCloud cloud)
 {
     verticalCloud->clear();
+    dstCloud->clear();
     pointType tmpPoint;
 
     //-- Extract ground coefficients with anti-interference function
@@ -191,20 +191,10 @@ pPointCloud RobotLocator::removeHorizontalPlanes(pPointCloud cloud)
 
 		double angleCosine = abs(vecNormal.dot(vecPoint) / (vecNormal.norm() * vecPoint.norm()));
 
-		if (angleCosine > 0.80f)
+		if (angleCosine < 0.80f)
 		{
-			cloud->points[i].r = 66;
-			cloud->points[i].g = 133;
-			cloud->points[i].b = 244;
+            verticalCloud->points.push_back(cloud->points[i]);
 		}
-        else
-        {
-            tmpPoint = cloud->points[i];
-            tmpPoint.r = 66;
-			tmpPoint.g = 133;
-			tmpPoint.b = 244;
-            verticalCloud->points.push_back(tmpPoint);
-        }
 	}
 
     //-- Remove Outliers
@@ -213,6 +203,16 @@ pPointCloud RobotLocator::removeHorizontalPlanes(pPointCloud cloud)
     passSOR.setMeanK(50);
     passSOR.setStddevMulThresh(0.1);
     passSOR.filter(*verticalCloud);
+
+    //-- Copy points from verticalCloud to dstCloud
+    for (size_t i = 0; i < verticalCloud->points.size(); i++)
+    {
+        tmpPoint = verticalCloud->points[i];
+        tmpPoint.r = 66;
+        tmpPoint.g = 133;
+        tmpPoint.b = 244;
+        dstCloud->points.push_back(tmpPoint);
+    }
 
     return verticalCloud;
 }
@@ -238,7 +238,7 @@ void RobotLocator::locateBeforeDune(void)
     seg.setOptimizeCoefficients(true);
     seg.setModelType(pcl::SACMODEL_PLANE);
     seg.setMethodType(pcl::SAC_RANSAC);
-    seg.setDistanceThreshold(0.02);
+    seg.setDistanceThreshold(0.005);
     seg.setIndices(indicesROI);
 
     seg.setInputCloud(verticalCloud);
@@ -248,22 +248,43 @@ void RobotLocator::locateBeforeDune(void)
     pcl::ExtractIndices<pointType> extract;
     pcl::PointIndices::Ptr tmpIndices(new pcl::PointIndices);
 
-    extract.setInputCloud(verticalCloud);
-    extract.setIndices(inliers);
-    extract.setNegative(false);
-    extract.filter(tmpIndices->indices);
-    
-    //-- Change the color of the extracted part for debuging
-    for (int i = 0; i < tmpIndices->indices.size(); i++)
-    {
-        verticalCloud->points[tmpIndices->indices[i]].r = 234;
-        verticalCloud->points[tmpIndices->indices[i]].g = 67;
-        verticalCloud->points[tmpIndices->indices[i]].b = 53;
-    }
+    // extract.setInputCloud(verticalCloud);
+    // extract.setIndices(inliers);
+    // extract.setNegative(false);
+    // extract.filter(tmpIndices->indices);
 
-    //-- Extract indices for the rest part
-    extract.setNegative(true);
-    extract.filter(indicesROI->indices);
+    //-- Extract fence by color
+    Vector3i fenceRGB = getCloudAverageColor(verticalCloud, inliers);
+
+    indicesROI->indices.clear();
+    int thresholdRGB = 30;
+    for (int i = 0; i < verticalCloud->points.size(); i++)
+    {
+        if (verticalCloud->points[i].r > fenceRGB[0] - thresholdRGB && verticalCloud->points[i].r < fenceRGB[0] + thresholdRGB &&
+            verticalCloud->points[i].g > fenceRGB[1] - thresholdRGB && verticalCloud->points[i].g < fenceRGB[1] + thresholdRGB &&
+            verticalCloud->points[i].b > fenceRGB[2] - thresholdRGB && verticalCloud->points[i].b < fenceRGB[2] + thresholdRGB)
+        {
+            dstCloud->points[i].r = 234;
+            dstCloud->points[i].g = 67;
+            dstCloud->points[i].b = 53;
+        }
+        else
+        {
+            indicesROI->indices.push_back(i);
+        }
+    }
+    
+    // //-- Change the color of the extracted part for debuging
+    // for (int i = 0; i < tmpIndices->indices.size(); i++)
+    // {
+    //     dstCloud->points[tmpIndices->indices[i]].r = 234;
+    //     dstCloud->points[tmpIndices->indices[i]].g = 67;
+    //     dstCloud->points[tmpIndices->indices[i]].b = 53;
+    // }
+
+    // //-- Extract indices for the rest part
+    // extract.setNegative(true);
+    // extract.filter(indicesROI->indices);
 
     //-- Perform the plane segmentation for the rest part
     seg.setDistanceThreshold(0.01);
@@ -280,12 +301,42 @@ void RobotLocator::locateBeforeDune(void)
     //-- Change the color of the extracted part for debuging
     for (int i = 0; i < tmpIndices->indices.size(); i++)
     {
-        verticalCloud->points[tmpIndices->indices[i]].r = 52;
-        verticalCloud->points[tmpIndices->indices[i]].g = 168;
-        verticalCloud->points[tmpIndices->indices[i]].b = 83;
+        dstCloud->points[tmpIndices->indices[i]].r = 52;
+        dstCloud->points[tmpIndices->indices[i]].g = 168;
+        dstCloud->points[tmpIndices->indices[i]].b = 83;
     }
 
-    srcViewer.showCloud(verticalCloud);
+    // srcViewer.showCloud(dstCloud);
+}
+
+Vector3i RobotLocator::getCloudAverageColor(pPointCloud cloud, pcl::PointIndices::Ptr indices)
+{
+    pcl::RandomSample<pointType> sample;
+    pcl::PointIndices::Ptr tmpIndices(new pcl::PointIndices);
+
+    sample.setInputCloud(cloud);
+    sample.setSample(10);
+    sample.setIndices(indices);
+    sample.filter(tmpIndices->indices);
+
+    //TODO: Change average to RANSAC
+    Vector3i tmpRGB(0, 0, 0);
+    int tmpR, tmpG, tmpB;
+    for (size_t i = 0; i < tmpIndices->indices.size(); i++)
+    {
+        tmpRGB[0] += cloud->points[tmpIndices->indices[i]].r;
+        tmpRGB[1] += cloud->points[tmpIndices->indices[i]].g;
+        tmpRGB[2] += cloud->points[tmpIndices->indices[i]].b;
+
+        tmpR = cloud->points[tmpIndices->indices[i]].r;
+        tmpG = cloud->points[tmpIndices->indices[i]].g;
+        tmpB = cloud->points[tmpIndices->indices[i]].b;
+    }
+    tmpRGB[0] /= tmpIndices->indices.size();
+    tmpRGB[1] /= tmpIndices->indices.size();
+    tmpRGB[2] /= tmpIndices->indices.size();
+
+    return tmpRGB;
 }
 
 bool RobotLocator::isStoped(void)

@@ -17,6 +17,7 @@
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/features/normal_3d.h>
+#include <pcl/filters/random_sample.h>
 #include <Eigen/Dense>
 #include "act_d435.h"
 
@@ -42,6 +43,8 @@ public:
 
     void locateBeforeDune(void);
 
+    Vector3i getCloudAverageColor(pPointCloud cloud, pcl::PointIndices::Ptr indices);
+
     bool isStoped(void);
 
     inline pPointCloud getSrcCloud(void) { return srcCloud; }
@@ -56,7 +59,6 @@ private:
     pPointCloud		srcCloud;
 	pPointCloud     filteredCloud;
     pPointCloud     verticalCloud;
-	pPointCloud     tmpCloud;
 	pPointCloud     dstCloud;
 
     pcl::ModelCoefficients::Ptr groundCoefficients;
