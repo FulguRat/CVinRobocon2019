@@ -7,7 +7,11 @@
 #define BEFORE_DUNE         1
 #define BEFORE_GRASSLAND    2
 
+#define STD_ROI {-0.6f, 0.6f, 0.0f, 2.5f}
+
 #include <pcl/point_types.h>
+#include <pcl/common/common.h>
+#include <pcl/common/transforms.h>
 #include <pcl/visualization/cloud_viewer.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/voxel_grid.h>
@@ -19,10 +23,23 @@
 #include <pcl/features/normal_3d.h>
 #include <pcl/filters/random_sample.h>
 #include <Eigen/Dense>
+#include <cmath>
 #include "act_d435.h"
 
 using namespace Eigen;
 
+//-- ROI of an object
+typedef struct
+{
+    double xMin;
+    double xMax;
+
+    double zMin;
+    double zMax;
+
+} ObjectROI;
+
+//-- Algorithm implementation for robot locating
 class RobotLocator
 {
 public:
@@ -37,13 +54,19 @@ public:
 
     void preProcess(void);
 
-    pPointCloud removeHorizontalPlanes(pPointCloud cloud);
+    pcl::PointIndices::Ptr getPlaneIndicesWithinROI(pPointCloud cloud, pcl::PointIndices::Ptr indices);
 
     pcl::ModelCoefficients::Ptr extractGroundCoeff(pPointCloud cloud);
 
-    void locateBeforeDune(void);
+    pPointCloud rotatePointCloudToHorizontal(pPointCloud cloud);
 
-    Vector3i getCloudAverageColor(pPointCloud cloud, pcl::PointIndices::Ptr indices);
+    pPointCloud removeHorizontalPlanes(pPointCloud cloud);
+
+    pPointCloud extractVerticalCloud(pPointCloud cloud);
+
+    ObjectROI updateObjectROI(pPointCloud cloud, pcl::PointIndices::Ptr indices);
+
+    void locateBeforeDune(void);
 
     bool isStoped(void);
 
@@ -63,9 +86,12 @@ private:
 
     pcl::ModelCoefficients::Ptr groundCoefficients;
 
-    pcl::visualization::CloudViewer srcViewer;
+    pcl::PointIndices::Ptr  indicesROI;
+    ObjectROI               visionFieldROI;
+    ObjectROI               leftFenseROI;
+    ObjectROI               duneROI;
 
-    pcl::PointIndices::Ptr indicesROI;
+    pcl::visualization::CloudViewer srcViewer;
 };
 
 #endif
