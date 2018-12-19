@@ -54,7 +54,7 @@ public:
 
     void preProcess(void);
 
-    pcl::PointIndices::Ptr getPlaneIndicesWithinROI(pPointCloud cloud, pcl::PointIndices::Ptr indices);
+    pcl::PointIndices::Ptr getPlaneIndicesWithinROI(pPointCloud cloud, ObjectROI roi);
 
     pcl::ModelCoefficients::Ptr extractGroundCoeff(pPointCloud cloud);
 

@@ -8,7 +8,7 @@ RobotLocator::RobotLocator() : srcCloud(new pointCloud),
                                groundCoefficients(new pcl::ModelCoefficients),
 					           srcViewer("Src Viewer")
 {
-    
+    leftFenseROI = { -0.6/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
 }
 
 RobotLocator::~RobotLocator()
@@ -104,12 +104,12 @@ void RobotLocator::preProcess(void)
     
     pass.setInputCloud(srcCloud);
 	pass.setFilterFieldName("x");
-	pass.setFilterLimits(-0.6, 0.6);
+	pass.setFilterLimits(-1.0, 1.0);
 	pass.filter(*filteredCloud);
     
 	pass.setInputCloud(filteredCloud);
 	pass.setFilterFieldName("z");
-	pass.setFilterLimits(0.0, 2.5);
+	pass.setFilterLimits(0.0, 4.0);
 	pass.filter(*filteredCloud);
 
     //-- Down sampling
@@ -178,10 +178,10 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
     groundCoefficients->values[2] = 0.0f;
     groundCoefficients->values[3] = groundCoefficients->values[3];
 
-    cout << "Ground coefficients: " << groundCoefficients->values[0] << " " 
-                                    << groundCoefficients->values[1] << " "
-                                    << groundCoefficients->values[2] << " " 
-                                    << groundCoefficients->values[3] << endl;
+    // cout << "Ground coefficients: " << groundCoefficients->values[0] << " " 
+    //                                 << groundCoefficients->values[1] << " "
+    //                                 << groundCoefficients->values[2] << " " 
+    //                                 << groundCoefficients->values[3] << endl;
 
     return cloud;
 }
@@ -256,9 +256,22 @@ pPointCloud RobotLocator::extractVerticalCloud(pPointCloud cloud)
     return verticalCloud;
 }
 
-pcl::PointIndices::Ptr RobotLocator::getPlaneIndicesWithinROI(pPointCloud cloud, pcl::PointIndices::Ptr indices)
+pcl::PointIndices::Ptr RobotLocator::getPlaneIndicesWithinROI(pPointCloud cloud, ObjectROI roi)
 {   
     pcl::PointIndices::Ptr resultIndices(new pcl::PointIndices);
+
+    //-- Get point cloud indices inside given ROI
+    pcl::PassThrough<pointType> pass;
+    pass.setInputCloud(cloud);
+	pass.setFilterFieldName("x");
+	pass.setFilterLimits(leftFenseROI.xMin, leftFenseROI.xMax);
+	pass.filter(indicesROI->indices);
+
+    pass.setInputCloud(cloud);
+	pass.setFilterFieldName("z");
+	pass.setFilterLimits(leftFenseROI.zMin, leftFenseROI.zMax);
+    pass.setIndices(indicesROI);
+	pass.filter(indicesROI->indices);
 
     //-- Plane model segmentation
     pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
@@ -269,12 +282,12 @@ pcl::PointIndices::Ptr RobotLocator::getPlaneIndicesWithinROI(pPointCloud cloud,
 	seg.setModelType(pcl::SACMODEL_PLANE);
 	seg.setMethodType(pcl::SAC_RANSAC);
 	seg.setDistanceThreshold(0.01);
-    seg.setIndices(indices);
+    seg.setIndices(indicesROI);
 
 	seg.setInputCloud(cloud);
 	seg.segment(*inliers, *coefficients);
 
-    //-- If no plane found, break out
+    //-- TODO: If tracking failed
     if (coefficients->values.size() == 0) { return resultIndices; }
 
     //-- Vector of plane normal and every point on the plane
@@ -293,19 +306,21 @@ pcl::PointIndices::Ptr RobotLocator::getPlaneIndicesWithinROI(pPointCloud cloud,
 	ne.compute(*normal);
 
     //-- Compare point normal and position, extract indices of points meeting the criteria
-	for (size_t i = 0; i < cloud->points.size(); i++)
+	for (size_t i = 0; i < inliers->indices.size(); i++)
 	{
-		vecPoint[0] = normal->points[i].normal_x;
-		vecPoint[1] = normal->points[i].normal_y;
-		vecPoint[2] = normal->points[i].normal_z;
+		vecPoint[0] = normal->points[inliers->indices[i]].normal_x;
+		vecPoint[1] = normal->points[inliers->indices[i]].normal_y;
+		vecPoint[2] = normal->points[inliers->indices[i]].normal_z;
 
 		double angleCosine = abs(vecNormal.dot(vecPoint) / (vecNormal.norm() * vecPoint.norm()));
-        double distanceToPlane = abs(coefficients->values[0] * cloud->points[i].x + coefficients->values[1] * cloud->points[i].y + 
-                                     coefficients->values[2] * cloud->points[i].z + coefficients->values[3]) / vecNormal.norm();
+        double distanceToPlane = abs(coefficients->values[0] * cloud->points[inliers->indices[i]].x + 
+                                     coefficients->values[1] * cloud->points[inliers->indices[i]].y + 
+                                     coefficients->values[2] * cloud->points[inliers->indices[i]].z + 
+                                     coefficients->values[3]) / vecNormal.norm();
 
 		if (angleCosine > 0.80f && distanceToPlane < 0.1f)
 		{
-            resultIndices->indices.push_back(i);
+            resultIndices->indices.push_back(inliers->indices[i]);
 		}
 	}
 
@@ -320,10 +335,10 @@ ObjectROI RobotLocator::updateObjectROI(pPointCloud cloud, pcl::PointIndices::Pt
     pcl::getMinMax3D(*cloud, *indices, minVector, maxVector);
 
     objROI.xMin = minVector[0] - 0.3f;
-    objROI.xMax = minVector[0] + 0.3f;
+    objROI.xMax = maxVector[0] + 0.3f;
     
     objROI.zMin = minVector[2] - 0.3f;
-    objROI.zMax = minVector[2] + 0.3f;
+    objROI.zMax = maxVector[2] + 0.3f;
 
     return objROI;
 }
@@ -334,18 +349,15 @@ void RobotLocator::locateBeforeDune(void)
 
     // srcViewer.showCloud(verticalCloud);
 
-    //-- ROI indice
-    pcl::PassThrough<pointType> pass;
-    pass.setInputCloud(verticalCloud);
-	pass.setFilterFieldName("x");
-	pass.setFilterLimits(-0.6, -0.2);
-	pass.filter(indicesROI->indices);
-
     //-- Perform the plane segmentation with specific indices
     pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
     pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 
-    inliers = getPlaneIndicesWithinROI(verticalCloud, indicesROI);
+    inliers = getPlaneIndicesWithinROI(verticalCloud, leftFenseROI);
+    leftFenseROI = updateObjectROI(verticalCloud, inliers);
+
+    cout << "xMin_  " << leftFenseROI.xMin << "  xMax_  " << leftFenseROI.xMax << 
+            "  zMin_  " << leftFenseROI.zMin << "  zMax_  " << leftFenseROI.zMax << endl;
     
     //-- Change the color of the extracted part for debuging
     for (int i = 0; i < inliers->indices.size(); i++)
