@@ -6,9 +6,14 @@ RobotLocator::RobotLocator() : srcCloud(new pointCloud),
                                dstCloud(new pointCloud),
                                indicesROI(new pcl::PointIndices),
                                groundCoefficients(new pcl::ModelCoefficients),
-					           srcViewer("Src Viewer")
+                               dstViewer(new pcl::visualization::PCLVisualizer("Advanced Viewer"))
 {
     leftFenseROI = { -0.6/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
+
+    dstViewer->setBackgroundColor(0.259, 0.522, 0.957);
+    dstViewer->addPointCloud<pointType>(dstCloud, "Destination Cloud");
+    dstViewer->addCoordinateSystem(0.2);
+    dstViewer->initCameraParameters();
 }
 
 RobotLocator::~RobotLocator()
@@ -46,7 +51,7 @@ void RobotLocator::init(ActD435& d435)
         pcl::PassThrough<pointType> pass; 
         pass.setInputCloud(srcCloud);
         pass.setFilterFieldName("z");
-        pass.setFilterLimits(0.0, 3.0);
+        pass.setFilterLimits(0.0f, 3.0f);
         pass.filter(*srcCloud);
 
         pcl::VoxelGrid<pointType> passVG;
@@ -104,12 +109,12 @@ void RobotLocator::preProcess(void)
     
     pass.setInputCloud(srcCloud);
 	pass.setFilterFieldName("x");
-	pass.setFilterLimits(-1.0, 1.0);
+	pass.setFilterLimits(-1.0f, 1.0f);
 	pass.filter(*filteredCloud);
     
 	pass.setInputCloud(filteredCloud);
 	pass.setFilterFieldName("z");
-	pass.setFilterLimits(0.0, 4.0);
+	pass.setFilterLimits(0.0f, 4.0f);
 	pass.filter(*filteredCloud);
 
     //-- Down sampling
@@ -216,7 +221,7 @@ pPointCloud RobotLocator::removeHorizontalPlanes(pPointCloud cloud)
 
 		double angleCosine = abs(vecNormal.dot(vecPoint) / (vecNormal.norm() * vecPoint.norm()));
 
-		if (angleCosine < 0.90f)
+		if (angleCosine < 0.90)
 		{
             verticalCloud->points.push_back(cloud->points[i]);
 		}
@@ -233,9 +238,9 @@ pPointCloud RobotLocator::removeHorizontalPlanes(pPointCloud cloud)
     for (size_t i = 0; i < verticalCloud->points.size(); i++)
     {
         tmpPoint = verticalCloud->points[i];
-        tmpPoint.r = 66;
-        tmpPoint.g = 133;
-        tmpPoint.b = 244;
+        tmpPoint.r = 0;
+        tmpPoint.g = 0;
+        tmpPoint.b = 0;
         dstCloud->points.push_back(tmpPoint);
     }
 
@@ -318,7 +323,7 @@ pcl::PointIndices::Ptr RobotLocator::getPlaneIndicesWithinROI(pPointCloud cloud,
                                      coefficients->values[2] * cloud->points[inliers->indices[i]].z + 
                                      coefficients->values[3]) / vecNormal.norm();
 
-		if (angleCosine > 0.80f && distanceToPlane < 0.1f)
+		if (angleCosine > 0.80 && distanceToPlane < 0.10)
 		{
             resultIndices->indices.push_back(inliers->indices[i]);
 		}
@@ -334,11 +339,11 @@ ObjectROI RobotLocator::updateObjectROI(pPointCloud cloud, pcl::PointIndices::Pt
 
     pcl::getMinMax3D(*cloud, *indices, minVector, maxVector);
 
-    objROI.xMin = minVector[0] - 0.3f;
-    objROI.xMax = maxVector[0] + 0.3f;
+    objROI.xMin = minVector[0] - 0.3;
+    objROI.xMax = maxVector[0] + 0.3;
     
-    objROI.zMin = minVector[2] - 0.3f;
-    objROI.zMax = maxVector[2] + 0.3f;
+    objROI.zMin = minVector[2] - 0.3;
+    objROI.zMax = maxVector[2] + 0.3;
 
     return objROI;
 }
@@ -346,8 +351,6 @@ ObjectROI RobotLocator::updateObjectROI(pPointCloud cloud, pcl::PointIndices::Pt
 void RobotLocator::locateBeforeDune(void)
 {
     extractVerticalCloud(filteredCloud); 
-
-    // srcViewer.showCloud(verticalCloud);
 
     //-- Perform the plane segmentation with specific indices
     pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
@@ -398,15 +401,16 @@ void RobotLocator::locateBeforeDune(void)
     //-- Change the color of the extracted part for debuging
     for (int i = 0; i < inliers->indices.size(); i++)
     {
-        dstCloud->points[inliers->indices[i]].r = 52;
-        dstCloud->points[inliers->indices[i]].g = 168;
-        dstCloud->points[inliers->indices[i]].b = 83;
+        dstCloud->points[inliers->indices[i]].r = 251;
+        dstCloud->points[inliers->indices[i]].g = 188;
+        dstCloud->points[inliers->indices[i]].b = 5;
     }
 
-    srcViewer.showCloud(dstCloud);
+    dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
+    dstViewer->spinOnce(1);
 }
 
 bool RobotLocator::isStoped(void)
 {
-    return srcViewer.wasStopped();
+    return dstViewer->wasStopped();
 }
