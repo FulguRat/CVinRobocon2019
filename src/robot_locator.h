@@ -3,9 +3,11 @@
 #ifndef ROBOT_LOCATOR_H_
 #define ROBOT_LOCATOR_H_
 
-#define STARTUP_INITIAL     0
-#define BEFORE_DUNE         1
-#define BEFORE_GRASSLAND    2
+#define STARTUP_INITIAL       0
+#define BEFORE_DUNE_STAGE_1   1
+#define BEFORE_DUNE_STAGE_2   2
+#define BEFORE_DUNE_STAGE_3   3
+#define BEFORE_GRASSLAND      4
 
 #define STD_ROI {-0.6f, 0.6f, 0.0f, 2.5f}
 
@@ -54,19 +56,22 @@ public:
 
     void preProcess(void);
 
-    pcl::PointIndices::Ptr getPlaneIndicesWithinROI(pPointCloud cloud, ObjectROI roi);
+    void extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi, 
+                                pcl::PointIndices::Ptr indices, pcl::ModelCoefficients::Ptr coefficients);
 
     pcl::ModelCoefficients::Ptr extractGroundCoeff(pPointCloud cloud);
 
     pPointCloud rotatePointCloudToHorizontal(pPointCloud cloud);
 
-    pPointCloud removeHorizontalPlanes(pPointCloud cloud);
+    pPointCloud removeHorizontalPlane(pPointCloud cloud, bool onlyGround = false);
 
     pPointCloud extractVerticalCloud(pPointCloud cloud);
 
     ObjectROI updateObjectROI(pPointCloud cloud, pcl::PointIndices::Ptr indices);
 
-    void locateBeforeDune(void);
+    void locateBeforeDuneStage1(void);
+    void locateBeforeDuneStage2(void);
+    void locateBeforeDuneStage3(void);
 
     bool isStoped(void);
 
@@ -75,6 +80,7 @@ public:
 
 public:
     unsigned int status;
+    unsigned int nextStatusCounter;
 
 private:
     ActD435*        thisD435;
@@ -84,7 +90,8 @@ private:
     pPointCloud     verticalCloud;
 	pPointCloud     dstCloud;
 
-    pcl::ModelCoefficients::Ptr groundCoefficients;
+    pcl::ModelCoefficients::Ptr groundCoeff;
+    pcl::ModelCoefficients::Ptr groundCoeffRotated;
 
     pcl::PointIndices::Ptr  indicesROI;
     ObjectROI               visionFieldROI;
