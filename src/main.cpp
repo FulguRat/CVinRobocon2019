@@ -22,7 +22,7 @@ int main(int argc, char* argv[])
 		switch (fajLocator.status)
 		{
 			case STARTUP_INITIAL:
-				fajLocator.status = PASSING_DUNE;
+				fajLocator.status = BEFORE_GRASSLAND_STAGE_2;
 				break;
 
 			case BEFORE_DUNE_STAGE_1:
@@ -39,6 +39,14 @@ int main(int argc, char* argv[])
 
 			case PASSING_DUNE:
 				fajLocator.locatePassingDune();
+				break;
+
+			case BEFORE_GRASSLAND_STAGE_1:
+				fajLocator.locateBeforeGrasslandStage1();
+				break;
+
+			case BEFORE_GRASSLAND_STAGE_2:
+				fajLocator.locateBeforeGrasslandStage2();
 				break;
 
 			default:

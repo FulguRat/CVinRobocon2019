@@ -80,6 +80,9 @@ public:
 
     void locatePassingDune(void);
 
+    void locateBeforeGrasslandStage1(void);
+    void locateBeforeGrasslandStage2(void);
+
     bool isStoped(void);
 
     inline pPointCloud getSrcCloud(void) { return srcCloud; }
