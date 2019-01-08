@@ -3,11 +3,14 @@
 #ifndef ROBOT_LOCATOR_H_
 #define ROBOT_LOCATOR_H_
 
-#define STARTUP_INITIAL       0
-#define BEFORE_DUNE_STAGE_1   1
-#define BEFORE_DUNE_STAGE_2   2
-#define BEFORE_DUNE_STAGE_3   3
-#define BEFORE_GRASSLAND      4
+#define STARTUP_INITIAL            0
+#define BEFORE_DUNE_STAGE_1        1
+#define BEFORE_DUNE_STAGE_2        2
+#define BEFORE_DUNE_STAGE_3        3
+#define PASSING_DUNE               4
+#define BEFORE_GRASSLAND_STAGE_1   5
+#define BEFORE_GRASSLAND_STAGE_2   6
+#define PASSING_GRASSLAND          7
 
 #define STD_ROI {-0.6f, 0.6f, 0.0f, 2.5f}
 
@@ -22,6 +25,7 @@
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/segmentation/extract_clusters.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/filters/random_sample.h>
 #include <Eigen/Dense>
@@ -67,13 +71,19 @@ public:
 
     pPointCloud extractVerticalCloud(pPointCloud cloud);
 
-    ObjectROI updateObjectROI(pPointCloud cloud, pcl::PointIndices::Ptr indices);
+    ObjectROI updateObjectROI(pPointCloud cloud, pcl::PointIndices::Ptr indices, 
+                                double xMinus, double xPlus, double zMinus, double zPlus);
 
     void locateBeforeDuneStage1(void);
     void locateBeforeDuneStage2(void);
     void locateBeforeDuneStage3(void);
 	void testafterDuneStage(void);
 
+
+    void locatePassingDune(void);
+
+    void locateBeforeGrasslandStage1(void);
+    void locateBeforeGrasslandStage2(void);
 
     bool isStoped(void);
 
@@ -96,10 +106,9 @@ private:
     pcl::ModelCoefficients::Ptr groundCoeffRotated;
 
     pcl::PointIndices::Ptr  indicesROI;
-    ObjectROI               visionFieldROI;
     ObjectROI               leftFenseROI;
     ObjectROI               duneROI;
-	ObjectROI				testROI;
+    ObjectROI               frontFenseROI;
 
     float leftFenseDist;
     float duneDist;

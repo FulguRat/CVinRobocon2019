@@ -12,6 +12,11 @@ RobotLocator::RobotLocator() : srcCloud(new pointCloud),
     leftFenseROI = { -0.6/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
     duneROI      = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
 	testROI		 = { -0.5/*xMin*/,  0.2/*xMax*/, 0.0/*zMin*/, 1.0/*zMax*/ };
+    leftFenseROI  = { -0.6/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
+    duneROI       = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
+    // frontFenseROI = { -1.3/*xMin*/,  0.3/*xMax*/, 1.2/*zMin*/, 2.1/*zMax*/ };
+    frontFenseROI = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 1.5/*zMax*/ };
+
     dstViewer->setBackgroundColor(0.259, 0.522, 0.957);
     dstViewer->addPointCloud<pointType>(dstCloud, "Destination Cloud");
     dstViewer->addCoordinateSystem(0.2, "view point");
@@ -222,7 +227,7 @@ pPointCloud RobotLocator::removeHorizontalPlane(pPointCloud cloud, bool onlyGrou
 	ne.setSearchMethod(tree);
 	
 	pcl::PointCloud<pcl::Normal>::Ptr normal(new pcl::PointCloud<pcl::Normal>);
-	ne.setRadiusSearch(0.03);
+	ne.setRadiusSearch(0.03); /* setKSearch function can be try */
 	ne.compute(*normal);
 
     //-- Compare point normal and plane normal, remove every point on a horizontal plane
@@ -360,18 +365,19 @@ void RobotLocator::extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi,
 	}
 }
 
-ObjectROI RobotLocator::updateObjectROI(pPointCloud cloud, pcl::PointIndices::Ptr indices)
+ObjectROI RobotLocator::updateObjectROI(pPointCloud cloud, pcl::PointIndices::Ptr indices, 
+                                        double xMinus, double xPlus, double zMinus, double zPlus)
 {
     ObjectROI objROI;
     Eigen::Vector4f minVector, maxVector;
 
     pcl::getMinMax3D(*cloud, *indices, minVector, maxVector);
 
-    objROI.xMin = minVector[0] - 0.1;
-    objROI.xMax = maxVector[0] + 0.1;
+    objROI.xMin = minVector[0] - xMinus;
+    objROI.xMax = maxVector[0] + xPlus;
     
-    objROI.zMin = minVector[2] - 0.3;
-    objROI.zMax = maxVector[2] + 0.3;
+    objROI.zMin = minVector[2] - zMinus;
+    objROI.zMax = maxVector[2] + zPlus;
 
     return objROI;
 }
@@ -385,7 +391,7 @@ void RobotLocator::locateBeforeDuneStage1(void)
     pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 
     extractPlaneWithinROI(verticalCloud, leftFenseROI, inliers, coefficients);
-    leftFenseROI = updateObjectROI(verticalCloud, inliers);
+    leftFenseROI = updateObjectROI(verticalCloud, inliers, 0.1, 0.1, 0.3, 0.3);
 
     // cout << "xMin_  " << leftFenseROI.xMin << "  xMax_  " << leftFenseROI.xMax << 
     //         "  zMin_  " << leftFenseROI.zMin << "  zMax_  " << leftFenseROI.zMax << endl;
@@ -489,7 +495,7 @@ void RobotLocator::locateBeforeDuneStage2(void)
         seg.segment(*inliers, *coefficients);
     }
     
-    leftFenseROI = updateObjectROI(verticalCloud, inliers);
+    leftFenseROI = updateObjectROI(verticalCloud, inliers, 0.1, 0.1, 0.3, 0.3);
 
     // cout << "xMin_  " << leftFenseROI.xMin << "  xMax_  " << leftFenseROI.xMax << 
     //         "  zMin_  " << leftFenseROI.zMin << "  zMax_  " << leftFenseROI.zMax << endl;
@@ -544,7 +550,7 @@ void RobotLocator::locateBeforeDuneStage3(void)
     pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 
     extractPlaneWithinROI(verticalCloud, duneROI, inliers, coefficients);
-    duneROI = updateObjectROI(verticalCloud, inliers);
+    duneROI = updateObjectROI(verticalCloud, inliers, 0.1, 0.1, 0.3, 0.3);
     
     //-- Change the color of the extracted part for debuging
     for (int i = 0; i < inliers->indices.size(); i++)
@@ -560,7 +566,7 @@ void RobotLocator::locateBeforeDuneStage3(void)
 
     //-- The formula of dune is ax + by + cz + d = 0, which y = cameraHeight - 0.05
     vecNormal = Vector3d(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
-    double duneDistance = (coefficients->values[1] * (cameraHeight -0.05) + coefficients->values[3]) / vecNormal.norm();
+    double duneDistance = (coefficients->values[1] * (cameraHeight - 0.05) + coefficients->values[3]) / vecNormal.norm();
 
     // if (duneDistance < 0.5f) { nextStatusCounter++; }
     // else { nextStatusCounter = 0; }
@@ -568,6 +574,122 @@ void RobotLocator::locateBeforeDuneStage3(void)
     // if (nextStatusCounter >= 3) { status++; }
     
     cout << "Dune distance  " << duneDistance << endl;
+
+    dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
+    dstViewer->spinOnce(1);
+}
+
+void RobotLocator::locatePassingDune(void)
+{
+    extractVerticalCloud(filteredCloud);
+
+    //-- Get point cloud indices inside given ROI
+	pcl::PassThrough<pointType> pass;
+	pass.setInputCloud(verticalCloud);
+	pass.setFilterFieldName("x");
+	pass.setFilterLimits(frontFenseROI.xMin, 0.0);
+	pass.filter(indicesROI->indices);
+
+	pass.setInputCloud(verticalCloud);
+	pass.setFilterFieldName("z");
+	pass.setFilterLimits(frontFenseROI.zMin, frontFenseROI.zMax);
+	pass.setIndices(indicesROI);
+	pass.filter(indicesROI->indices);
+
+	// Creating the KdTree object for the search method of the extraction
+	pcl::search::KdTree<pointType>::Ptr tree(new pcl::search::KdTree<pointType>);
+	tree->setInputCloud(verticalCloud);
+
+	std::vector<pcl::PointIndices> clusterIndices;
+    pcl::PointIndices::Ptr largestIndice(new pcl::PointIndices);
+
+    //-- Perform euclidean cluster extraction
+	pcl::EuclideanClusterExtraction<pointType> ec;
+	ec.setClusterTolerance(0.1);
+	ec.setMinClusterSize(100);
+	ec.setMaxClusterSize(25000);
+	ec.setSearchMethod(tree);
+	ec.setInputCloud(verticalCloud);
+    ec.setIndices(indicesROI);
+	ec.extract(clusterIndices);
+
+    for (int i = 0; i < clusterIndices.size(); i++)
+    {
+        if (clusterIndices[i].indices.size() > largestIndice->indices.size())
+        {
+            *largestIndice = clusterIndices[i];
+        }
+    }
+
+    frontFenseROI = updateObjectROI(verticalCloud, largestIndice, 0.3, 0.0, 0.1, 0.1);
+    
+    //-- Change the color of the extracted part for debuging
+    for (int i = 0; i < largestIndice->indices.size(); i++)
+    {
+        dstCloud->points[largestIndice->indices[i]].r = 251;
+        dstCloud->points[largestIndice->indices[i]].g = 188;
+        dstCloud->points[largestIndice->indices[i]].b = 5;
+    }
+
+    Eigen::Vector4f minVector, maxVector;
+    pcl::getMinMax3D(*verticalCloud, *largestIndice, minVector, maxVector);
+
+    //-- Calculate the vertical distance to front fense
+    double fenseDistance = minVector[2];
+
+    // // if (fenseDistance < 0.5f) { nextStatusCounter++; }
+    // // else { nextStatusCounter = 0; }
+
+    // // if (nextStatusCounter >= 3) { status++; }
+    
+    cout << "front fense distance  " << fenseDistance << endl;
+
+    dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
+    dstViewer->spinOnce(1);
+}
+
+void RobotLocator::locateBeforeGrasslandStage1(void)
+{
+    extractVerticalCloud(filteredCloud); 
+
+    //-- Perform the plane segmentation with specific indices
+    pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+    pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+
+    extractPlaneWithinROI(verticalCloud, frontFenseROI, inliers, coefficients);
+    frontFenseROI = updateObjectROI(verticalCloud, inliers, 0.1, 0.1, 0.3, 0.3);
+    
+    //-- Change the color of the extracted part for debuging
+    for (int i = 0; i < inliers->indices.size(); i++)
+    {
+        dstCloud->points[inliers->indices[i]].r = 251;
+        dstCloud->points[inliers->indices[i]].g = 188;
+        dstCloud->points[inliers->indices[i]].b = 5;
+    }
+
+    Eigen::Vector4f minVector, maxVector;
+    pcl::getMinMax3D(*verticalCloud, *inliers, minVector, maxVector);
+
+    //-- Calculate the vertical distance to front fense
+    double fenseDistance = minVector[2];
+    double fenseCornerX = minVector[0];
+
+    // if (fenseCornerX > 0.0f) { nextStatusCounter++; }
+    // else { nextStatusCounter = 0; }
+
+    // if (nextStatusCounter >= 3) { status++; }
+    
+    cout << "front fense distance  " << fenseDistance << "  x_" << fenseCornerX << endl;
+
+    dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
+    dstViewer->spinOnce(1);
+}
+    
+void RobotLocator::locateBeforeGrasslandStage2(void)
+{
+    extractVerticalCloud(filteredCloud);
+
+
 
     dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
     dstViewer->spinOnce(1);
