@@ -72,6 +72,8 @@ public:
     void locateBeforeDuneStage1(void);
     void locateBeforeDuneStage2(void);
     void locateBeforeDuneStage3(void);
+	void testafterDuneStage(void);
+
 
     bool isStoped(void);
 
@@ -97,6 +99,7 @@ private:
     ObjectROI               visionFieldROI;
     ObjectROI               leftFenseROI;
     ObjectROI               duneROI;
+	ObjectROI				testROI;
 
     float leftFenseDist;
     float duneDist;

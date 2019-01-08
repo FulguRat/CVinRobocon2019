@@ -11,7 +11,7 @@ RobotLocator::RobotLocator() : srcCloud(new pointCloud),
 {
     leftFenseROI = { -0.6/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
     duneROI      = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
-
+	testROI		 = { -0.5/*xMin*/,  0.2/*xMax*/, 0.0/*zMin*/, 1.0/*zMax*/ };
     dstViewer->setBackgroundColor(0.259, 0.522, 0.957);
     dstViewer->addPointCloud<pointType>(dstCloud, "Destination Cloud");
     dstViewer->addCoordinateSystem(0.2, "view point");
@@ -521,8 +521,8 @@ void RobotLocator::locateBeforeDuneStage2(void)
     vecNormal = Vector3d(groundCoeffRotated->values[0], groundCoeffRotated->values[1], groundCoeffRotated->values[2]);
     double cameraHeight = abs(groundCoeffRotated->values[3]) / vecNormal.norm();
 
-    //-- The formula of dune is ax + by + cz + d = 0, which x = 0.0 and y = cameraHeight - 0.5
-    double zDistance = -(coefficients->values[1] * (cameraHeight * 0.5) + coefficients->values[3]) / coefficients->values[2];
+    //-- The formula of dune is ax + by + cz + d = 0, which x = 0.0 and y = cameraHeight - 0.05
+    double zDistance = -(coefficients->values[1] * (cameraHeight - 0.05) + coefficients->values[3]) / coefficients->values[2];
 
     if (zDistance < 1.40f) { nextStatusCounter++; }
     else { nextStatusCounter = 0; }
@@ -558,9 +558,9 @@ void RobotLocator::locateBeforeDuneStage3(void)
     Vector3d vecNormal(groundCoeffRotated->values[0], groundCoeffRotated->values[1], groundCoeffRotated->values[2]);
     double cameraHeight = abs(groundCoeffRotated->values[3]) / vecNormal.norm();
 
-    //-- The formula of dune is ax + by + cz + d = 0, which y = cameraHeight - 0.5
+    //-- The formula of dune is ax + by + cz + d = 0, which y = cameraHeight - 0.05
     vecNormal = Vector3d(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
-    double duneDistance = (coefficients->values[1] * (cameraHeight * 0.5) + coefficients->values[3]) / vecNormal.norm();
+    double duneDistance = (coefficients->values[1] * (cameraHeight -0.05) + coefficients->values[3]) / vecNormal.norm();
 
     // if (duneDistance < 0.5f) { nextStatusCounter++; }
     // else { nextStatusCounter = 0; }
@@ -576,4 +576,19 @@ void RobotLocator::locateBeforeDuneStage3(void)
 bool RobotLocator::isStoped(void)
 {
     return dstViewer->wasStopped();
+}
+
+void RobotLocator::testafterDuneStage(void)
+{
+	extractVerticalCloud(filteredCloud);
+
+	//-- Perform the plane segmentation with specific indices
+	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+
+	extractPlaneWithinROI(verticalCloud, testROI, inliers, coefficients);
+
+	testROI = updateObjectROI(verticalCloud, inliers);
+
+	 
 }
