@@ -3,15 +3,6 @@
 #ifndef ROBOT_LOCATOR_H_
 #define ROBOT_LOCATOR_H_
 
-#define STARTUP_INITIAL            0
-#define BEFORE_DUNE_STAGE_1        1
-#define BEFORE_DUNE_STAGE_2        2
-#define BEFORE_DUNE_STAGE_3        3
-#define PASSING_DUNE               4
-#define BEFORE_GRASSLAND_STAGE_1   5
-#define BEFORE_GRASSLAND_STAGE_2   6
-#define PASSING_GRASSLAND          7
-
 #define STD_ROI {-0.6f, 0.6f, 0.0f, 2.5f}
 
 #include <pcl/point_types.h>
@@ -82,6 +73,8 @@ public:
 
     void locateBeforeGrasslandStage1(void);
     void locateBeforeGrasslandStage2(void);
+	void locatePassingGrasslandStage1(void);
+	void locatePassingGrasslandStage2(void);
 
     bool isStoped(void);
 
@@ -91,6 +84,7 @@ public:
 public:
     unsigned int status;
     unsigned int nextStatusCounter;
+	float lineSlope;
 
 private:
     ActD435*        thisD435;
@@ -107,9 +101,17 @@ private:
     ObjectROI               leftFenseROI;
     ObjectROI               duneROI;
     ObjectROI               frontFenseROI;
+	ObjectROI				grasslandFenseROI;
 
     float leftFenseDist;
     float duneDist;
+	float frontFenseDist;
+	float firstRopeDist;
+	float secondRopeDist;
+	float grassFenseDist;
+
+	float angle;
+	float fenseCornerX;
 
     pcl::visualization::PCLVisualizer::Ptr dstViewer;
 };
