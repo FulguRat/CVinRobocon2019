@@ -9,6 +9,53 @@
 #include <pcl/pcl_base.h>
 #include <pcl/visualization/cloud_viewer.h>
 #include <chrono>
+#include <opencv2/opencv.hpp>
+
+#define STARTUP_INITIAL				0
+#define BEFORE_DUNE_STAGE_1			1
+#define BEFORE_DUNE_STAGE_2			2
+#define BEFORE_DUNE_STAGE_3			3
+#define PASSING_DUNE                4
+#define BEFORE_GRASSLAND_STAGE_1	5
+#define BEFORE_GRASSLAND_STAGE_2	6
+#define PASSING_GRASSLAND_STAGE_1	7
+#define PASSING_GRASSLAND_STAGE_2	8
+
+#define CAMERA_ARGS_LEFT  { 605.1696f, 606.6738f,    /*Focal Length*/ \
+							325.2110f, 243.7405f,    /*Principal Point*/ \
+							-0.0829f,    /*Skew*/ \
+							0.0937f, -0.0774f,   /*Radial Distortion*/ \
+							0.0f, 0.0f   /*Tangential Distortion*/ }
+
+//Arguments of right camera
+#define CAMERA_ARGS_RIGHT { 386.5348f, 387.4860f,    /*Focal Length*/ \
+							330.0357f, 232.8512f,    /*Principal Point*/ \
+							-0.2563f,    /*Skew*/ \
+							-0.0305f, 0.2411f,   /*Radial Distortion*/ \
+							0.0f, 0.0f   /*Tangential Distortion*/ }
+
+#define ROTATION_MATRIX		 (cv::Mat_<float>(3, 3) << 0.9997f, -0.0209f, 0.0093f, \
+													0.0209f, 0.9998f, -0.0014f, \
+													-0.0093f, 0.0016f, 1.0000f)
+
+#define TRANSLATION_MATRIX	 (cv::Mat_<float>(3, 1) << -15.2247f, -0.0541f, -0.7736f)
+
+typedef struct
+{
+	//inner arguments
+	float fx;
+	float fy;
+	float cx;
+	float cy;
+	float skew;
+
+	//distortion arguments
+	float k1;
+	float k2;
+	float p1;
+	float p2;
+
+} CameraArguments;
 
 using namespace std;
 using namespace rs2;
@@ -27,6 +74,11 @@ public:
 
 	void init(void);
 	pPointCloud update(void);
+	void imgProcess(void);
+	void FindPillarCenter(void);
+	void FindLines(void);
+	float GetDepth(cv::Point2f& pt, float a, float b, float c, float d);
+	float GetAngle(void);
 
 private:
 	//-- For color-aligned point cloud
@@ -35,6 +87,24 @@ private:
 
 	//-- For point cloud without color
 	pPointCloud pointsToPointCloud(const rs2::points& points);
+
+public:
+	vector<vector<cv::Point>> contours;
+	vector<vector<cv::Point>> filterContours;
+	vector<cv::Vec4i> hierarchy;
+	cv::Point2f center1 = cv::Point2f(0, 0);
+	cv::Point2f center2 = cv::Point2f(0, 0);
+	cv::Point3f center1In3D = cv::Point3f(0, 0, 0);
+	cv::Point3f center2In3D = cv::Point3f(0, 0, 0);
+
+	float lastXpos;
+	float lastZpos;
+	float nowXpos;
+	float nowZpos;
+	float angle;
+
+	float lineSlope;
+	unsigned int status = BEFORE_GRASSLAND_STAGE_2;
 
 private:
 	rs2::pointcloud  rs2Cloud;
@@ -49,6 +119,26 @@ private:
 	rs2::align       align;
 
 	pPointCloud		 cloudByRS2;
+
+	//opencv module
+
+	CameraArguments argsLeft;
+	CameraArguments argsRight;
+	cv::Mat intrinsicMatrixLeft;
+	cv::Mat intrinsicMatrixRight;
+	cv::Mat rotationMatrix;
+	cv::Mat translationMatrix;
+
+
+	vector<cv::Mat> channels;
+	cv::Mat srcImage;
+	cv::Mat channelR;
+	cv::Mat channelH;
+	cv::Mat channelS;
+	cv::Mat maskImage;
+	cv::Mat dstImage;
+	cv::Mat dst2Image;
+	cv::Mat firstPillarMask;
 
 	// pcl::visualization::CloudViewer viewer;
 };

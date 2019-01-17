@@ -9,15 +9,16 @@ groundCoeff(new pcl::ModelCoefficients),
 groundCoeffRotated(new pcl::ModelCoefficients),
 dstViewer(new pcl::visualization::PCLVisualizer("Advanced Viewer"))
 {
-	leftFenseROI = { -0.3/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
-	duneROI = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
-	// frontFenseROI = { -1.3/*xMin*/,  0.3/*xMax*/, 1.2/*zMin*/, 2.1/*zMax*/ };
-	frontFenseROI = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 1.5/*zMax*/ };
+    leftFenseROI  = { -0.6/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
+    duneROI       = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
+    // frontFenseROI = { -1.3/*xMin*/,  0.3/*xMax*/, 1.2/*zMin*/, 2.1/*zMax*/ };
+    frontFenseROI = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 1.5/*zMax*/ };
+	grasslandFenseROI = { -0.6/*xMin*/,  0.4/*xMax*/, 0.0/*zMin*/, 3.0/*zMax*/ };
 
 	dstViewer->setBackgroundColor(0.259, 0.522, 0.957);
-	dstViewer->addPointCloud<pointType>(dstCloud, "Destination Cloud");
-	dstViewer->addCoordinateSystem(0.2, "view point");
-	dstViewer->initCameraParameters();
+    dstViewer->addPointCloud<pointType>(dstCloud, "Destination Cloud");
+    dstViewer->addCoordinateSystem(0.2, "view point");
+    dstViewer->initCameraParameters();
 }
 
 RobotLocator::~RobotLocator()
@@ -128,7 +129,10 @@ void RobotLocator::preProcess(void)
 
 	pass.setInputCloud(filteredCloud);
 	pass.setFilterFieldName("z");
-	pass.setFilterLimits(0.0f, 4.0f);
+	if(status == BEFORE_GRASSLAND_STAGE_2 || status == PASSING_GRASSLAND_STAGE_1)
+		pass.setFilterLimits(0.0f, 2.0f);
+	else
+		pass.setFilterLimits(0.0f, 4.0f);
 	pass.filter(*filteredCloud);
 
 
@@ -494,7 +498,7 @@ void RobotLocator::locateBeforeDuneStage1(void)
 
 	if (nextStatusCounter >= 3) { status++; }
 
-	cout << minVector[2] << " " << xDistance << " " << plus_minus * acos(angleCosine) / PI * 180 << endl;
+	cout << minVector[2] << " " << xDistance << " " << plus_minus * acos(angleCosine) / CV_PI * 180 << endl;
 
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
@@ -621,7 +625,7 @@ void RobotLocator::locateBeforeDuneStage2(void)
 
 	if (nextStatusCounter >= 3) { status++; }
 
-	cout << "duneDistance  " << duneDistance << "Z distance  " << zDistance << " " << "leftX distance  " << xDistance << " " << "angle  " << plus_minus * acos(angleCosine) / PI * 180 << endl;
+	cout << "duneDistance  " << duneDistance << "Z distance  " << zDistance << " " << "leftX distance  " << xDistance << " " << "angle  " << plus_minus * acos(angleCosine) / CV_PI * 180 << endl;
 
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
@@ -670,7 +674,7 @@ void RobotLocator::locateBeforeDuneStage3(void)
 
 	// if (nextStatusCounter >= 3) { status++; }
 
-	cout << "Dune distance  " << duneDistance << " z_anxis " << plus_minus * acos(angleCosine) / PI * 180 - 45 << " anxis " << angleCosine << endl;
+	cout << "Dune distance  " << duneDistance << " z_anxis " << plus_minus * acos(angleCosine) / CV_PI * 180 - 45 << " anxis " << angleCosine << endl;
 
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
@@ -747,49 +751,132 @@ void RobotLocator::locatePassingDune(void)
 
 void RobotLocator::locateBeforeGrasslandStage1(void)
 {
+    extractVerticalCloud(filteredCloud); 
+
+    //-- Perform the plane segmentation with specific indices
+    pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+    pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+
+    extractPlaneWithinROI(verticalCloud, frontFenseROI, inliers, coefficients);
+    frontFenseROI = updateObjectROI(verticalCloud, inliers, 0.1, 0.1, 0.3, 0.3);
+    
+    //-- Change the color of the extracted part for debuging
+    for (int i = 0; i < inliers->indices.size(); i++)
+    {
+        dstCloud->points[inliers->indices[i]].r = 251;
+        dstCloud->points[inliers->indices[i]].g = 188;
+        dstCloud->points[inliers->indices[i]].b = 5;
+    }
+	
+
+	frontFenseROI = updateObjectROI(verticalCloud, inliers, 0.3, 0.0, 0.1, 0.1);
+
+	Eigen::Vector4f minVector, maxVector;
+	pcl::getMinMax3D(*verticalCloud, *inliers, minVector, maxVector);
+
+    //-- Calculate the vertical distance to front fense
+	thisD435->lastXpos = fenseCornerX;
+	thisD435->lastXpos = frontFenseDist;
+
+    frontFenseDist = maxVector[2];
+    fenseCornerX = minVector[0];
+
+	thisD435->nowXpos = fenseCornerX;
+	thisD435->nowZpos = frontFenseDist;
+
+	angle = thisD435->GetAngle();
+
+     /*if (fenseCornerX > 0.0f) { nextStatusCounter++; }
+     else { nextStatusCounter = 0; }
+
+     if (nextStatusCounter >= 3) { status++; }*/
+    
+    cout << "front fense distance  " << frontFenseDist << "  x_" << fenseCornerX << endl;
+
+    dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
+    dstViewer->spinOnce(1);
+}
+
+void RobotLocator::locateBeforeGrasslandStage2(void)
+{
+	extractGroundCoeff(filteredCloud);
+	thisD435->imgProcess();
+	thisD435->FindPillarCenter();
+	firstRopeDist = thisD435->GetDepth(thisD435->center1, groundCoeff->values[0], groundCoeff->values[1], groundCoeff->values[2], 1000 * groundCoeff->values[3]);
+	angle = thisD435->GetAngle();
+	cout << "firstRopeDist: " << firstRopeDist << endl;
+	//model change
+	if ((thisD435->center1.y > 440 || thisD435->center1.x > 580) && status == BEFORE_GRASSLAND_STAGE_2)
+	{
+		status = PASSING_GRASSLAND_STAGE_1;
+		thisD435->status = PASSING_GRASSLAND_STAGE_1;
+	}
+
+}
+
+void RobotLocator::locatePassingGrasslandStage1(void)
+{
+	extractGroundCoeff(filteredCloud);
+	thisD435->imgProcess();
+	thisD435->FindPillarCenter();
+	secondRopeDist = thisD435->GetDepth(thisD435->center2, groundCoeff->values[0], groundCoeff->values[1], groundCoeff->values[2], 1000 * groundCoeff->values[3]);
+	angle = thisD435->GetAngle();
+	cout << "secondRopeDist: " << secondRopeDist << endl;
+	//model change
+	if (status == PASSING_GRASSLAND_STAGE_1 && (thisD435->center2.y > 440 || thisD435->center2.x > 580))
+	{
+		status = PASSING_GRASSLAND_STAGE_2;
+		thisD435->status = PASSING_GRASSLAND_STAGE_2;
+	}
+
+}
+
+void RobotLocator::locatePassingGrasslandStage2(void)
+{
 	extractVerticalCloud(filteredCloud);
 
 	//-- Perform the plane segmentation with specific indices
 	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
 	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 
-	extractPlaneWithinROI(verticalCloud, frontFenseROI, inliers, coefficients);
-	frontFenseROI = updateObjectROI(verticalCloud, inliers, 0.1, 0.1, 0.3, 0.3);
+	extractPlaneWithinROI(verticalCloud, grasslandFenseROI, inliers, coefficients);
+	grasslandFenseROI = updateObjectROI(verticalCloud, inliers, 0.1, 0.1, 0.3, 0.3);
 
-	//-- Change the color of the extracted part for debuging
-	//for (int i = 0; i < inliers->indices.size(); i++)
-	//{
-	 //   dstCloud->points[inliers->indices[i]].r = 251;
-	 //   dstCloud->points[inliers->indices[i]].g = 188;
-	 //   dstCloud->points[inliers->indices[i]].b = 5;
-   // }
+	for (int i = 0; i < inliers->indices.size(); i++)
+	{
+		dstCloud->points[inliers->indices[i]].r = 251;
+		dstCloud->points[inliers->indices[i]].g = 188;
+		dstCloud->points[inliers->indices[i]].b = 5;
+	}
+
+	//-- The formula of dune is ax + by + cz + d = 0, which y = cameraHeight - 0.05
+	Vector3d vecNormal = Vector3d(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
 
 	Eigen::Vector4f minVector, maxVector;
+
 	pcl::getMinMax3D(*verticalCloud, *inliers, minVector, maxVector);
 
-	//-- Calculate the vertical distance to front fense
-	double fenseDistance = minVector[2];
-	double fenseCornerX = minVector[0];
+	thisD435->lastXpos = fenseCornerX;
+	thisD435->lastXpos = grassFenseDist;
 
-	// if (fenseCornerX > 0.0f) { nextStatusCounter++; }
+	grassFenseDist = maxVector[2];
+	fenseCornerX = minVector[0];
+
+	thisD435->nowXpos = fenseCornerX;
+	thisD435->nowZpos = grassFenseDist;
+
+	angle = thisD435->GetAngle();
+
+	// if (frontFenseDist < 0.3f) { nextStatusCounter++; }
 	// else { nextStatusCounter = 0; }
 
 	// if (nextStatusCounter >= 3) { status++; }
 
-	cout << "front fense distance  " << fenseDistance << "  x_" << fenseCornerX << endl;
+	cout << "grassFenseDist  " << grassFenseDist << endl;
 
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
-}
 
-void RobotLocator::locateBeforeGrasslandStage2(void)
-{
-	extractVerticalCloud(filteredCloud);
-
-
-
-	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
-	dstViewer->spinOnce(1);
 }
 
 bool RobotLocator::isStoped(void)
