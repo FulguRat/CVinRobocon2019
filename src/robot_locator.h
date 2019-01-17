@@ -36,8 +36,7 @@
 #include <cmath>
 #include "act_d435.h"
 
-using namespace Eigen;
-
+using namespace Eigen;		
 //-- ROI of an object
 typedef struct
 {
@@ -78,6 +77,8 @@ public:
 	ObjectROI updateObjectROI(pPointCloud cloud, pcl::PointIndices::Ptr indices,
 		double xMinus, double xPlus, double zMinus, double zPlus);
 
+	
+
 	void locateBeforeDuneStage1(void);
 	void locateBeforeDuneStage2(void);
 	void locateBeforeDuneStage3(void);
@@ -89,12 +90,15 @@ public:
 
 	bool isStoped(void);
 
+	
+
 	inline pPointCloud getSrcCloud(void) { return srcCloud; }
 	inline pPointCloud getFilteredCloud(void) { return filteredCloud; }
 
 public:
 	unsigned int status;
 	unsigned int nextStatusCounter;
+	double diatancemeasurement;
 
 private:
 	ActD435*        thisD435;
@@ -114,6 +118,8 @@ private:
 
 	float leftFenseDist;
 	float duneDist;
+
+	
 
 	pcl::visualization::PCLVisualizer::Ptr dstViewer;
 };

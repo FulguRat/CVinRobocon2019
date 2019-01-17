@@ -14,6 +14,7 @@ dstViewer(new pcl::visualization::PCLVisualizer("Advanced Viewer"))
 	// frontFenseROI = { -1.3/*xMin*/,  0.3/*xMax*/, 1.2/*zMin*/, 2.1/*zMax*/ };
 	frontFenseROI = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 1.5/*zMax*/ };
 
+
 	dstViewer->setBackgroundColor(0.259, 0.522, 0.957);
 	dstViewer->addPointCloud<pointType>(dstCloud, "Destination Cloud");
 	dstViewer->addCoordinateSystem(0.2, "view point");
@@ -496,6 +497,8 @@ void RobotLocator::locateBeforeDuneStage1(void)
 
 	cout << minVector[2] << " " << xDistance << " " << plus_minus * acos(angleCosine) / PI * 180 << endl;
 
+	diatancemeasurement = xDistance;
+
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 
@@ -621,6 +624,8 @@ void RobotLocator::locateBeforeDuneStage2(void)
 
 	if (nextStatusCounter >= 3) { status++; }
 
+	diatancemeasurement = xDistance;
+
 	cout << "duneDistance  " << duneDistance << "Z distance  " << zDistance << " " << "leftX distance  " << xDistance << " " << "angle  " << plus_minus * acos(angleCosine) / PI * 180 << endl;
 
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
@@ -670,7 +675,7 @@ void RobotLocator::locateBeforeDuneStage3(void)
 
 	// if (nextStatusCounter >= 3) { status++; }
 
-	cout << "Dune distance  " << duneDistance << " z_anxis " << plus_minus * acos(angleCosine) / PI * 180 - 45 << " anxis " << angleCosine << endl;
+	cout << "Dune distance  " << duneDistance << " z_anxis " << plus_minus * acos(angleCosine) / PI * 180 - 45 <<  endl;
 
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
@@ -796,3 +801,4 @@ bool RobotLocator::isStoped(void)
 {
 	return dstViewer->wasStopped();
 }
+

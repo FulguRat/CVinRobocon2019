@@ -2,6 +2,7 @@
 #include <librealsense2/rs.hpp>
 #include "act_d435.h"
 #include "robot_locator.h"
+#include "kalman_filter.h"
 
 using namespace std;
 
@@ -9,10 +10,15 @@ int main(int argc, char* argv[])
 {
 	ActD435			fajD435;
 	RobotLocator 	fajLocator;
+	kalman_filter   distancefilter;
+	kalman_filter	anglefilter;
+
+	//int dynamParams, int measureParams, Mat transitionMatrix,double processNoiseCov, double measurementNoiseCov, double errorCovPost
+	distancefilter.initKalmanFilter(2, 1, (Mat_<float>(2, 2) << 1, 1, 0, 1), 1e-5, 1e-5, 0.1);
 
 	fajD435.init();
 	fajLocator.init(fajD435);
-	fajLocator.status = STARTUP_INITIAL;
+	fajLocator.status = STARTUP_INITIAL;;
 
 	while (!fajLocator.isStoped())
 	{
