@@ -3,6 +3,8 @@
 #ifndef ROBOT_LOCATOR_H_
 #define ROBOT_LOCATOR_H_
 
+//left is zero, right is one 
+
 #define STD_ROI {-0.6f, 0.6f, 0.0f, 2.5f}
 
 #include <pcl/point_types.h>
@@ -28,6 +30,9 @@
 
 using namespace Eigen;
 
+const float fenseToPillarDist = 1360;
+const float fenseCorner2fenseDist = 1410;
+const float line2fenseDist = 700;
 //-- ROI of an object
 typedef struct
 {
@@ -78,6 +83,7 @@ public:
     void locateBeforeGrasslandStage2(void);
 	void locatePassingGrasslandStage1(void);
 	void locatePassingGrasslandStage2(void);
+	void climbingMountain(void);
 
 	bool isStoped(void);
 
@@ -107,6 +113,7 @@ private:
 	ObjectROI				grasslandFenseROI;
 
     float leftFenseDist;
+	float rightFenseDist;
     float duneDist;
 	float frontFenseDist;
 	float firstRopeDist;

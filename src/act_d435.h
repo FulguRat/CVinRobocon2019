@@ -10,6 +10,14 @@
 #include <pcl/visualization/cloud_viewer.h>
 #include <chrono>
 #include <opencv2/opencv.hpp>
+#include <Eigen/Dense>
+
+#define MODEL			0
+#define LEFT_MODEL		0
+#define RIGHT_MODEL		1
+
+#define HORZISONAL_FENSE			0
+#define VERTICAL_FENSE				1
 
 #define STARTUP_INITIAL				0
 #define BEFORE_DUNE_STAGE_1			1
@@ -20,6 +28,7 @@
 #define BEFORE_GRASSLAND_STAGE_2	6
 #define PASSING_GRASSLAND_STAGE_1	7
 #define PASSING_GRASSLAND_STAGE_2	8
+#define CLIMBING_MOUNTAIN           9
 
 #define CAMERA_ARGS_LEFT  { 605.1696f, 606.6738f,    /*Focal Length*/ \
 							325.2110f, 243.7405f,    /*Principal Point*/ \
@@ -39,6 +48,8 @@
 													-0.0093f, 0.0016f, 1.0000f)
 
 #define TRANSLATION_MATRIX	 (cv::Mat_<float>(3, 1) << -15.2247f, -0.0541f, -0.7736f)
+
+const float cameraYawAngel = 20 * CV_PI / 180;
 
 typedef struct
 {
@@ -76,9 +87,11 @@ public:
 	pPointCloud update(void);
 	void imgProcess(void);
 	void FindPillarCenter(void);
-	void FindLines(void);
-	float GetDepth(cv::Point2f& pt, float a, float b, float c, float d);
-	float GetAngle(void);
+	void FindFenseCorner(int fenseType);
+	void FindLineEnd(void);
+	float GetDepth(cv::Point2f& pt, cv::Point3f& pt1);
+	float GetyawAngle(cv::Point2f& pt1, cv::Point2f& pt2, float angle);
+	cv::Point3f GetIrCorrdinate(cv::Point2f& pt);
 
 private:
 	//-- For color-aligned point cloud
@@ -92,21 +105,27 @@ public:
 	vector<vector<cv::Point>> contours;
 	vector<vector<cv::Point>> filterContours;
 	vector<cv::Vec4i> hierarchy;
+	vector<float> groundCoeff;
 	cv::Point2f center1 = cv::Point2f(0, 0);
 	cv::Point2f center2 = cv::Point2f(0, 0);
+	cv::Point2f fenseCorner = cv::Point2f(0, 0);
+	cv::Point2f lineEnd = cv::Point2f(0, 0);
 	cv::Point3f center1In3D = cv::Point3f(0, 0, 0);
 	cv::Point3f center2In3D = cv::Point3f(0, 0, 0);
+	cv::Point3f fenseCornerIn3D = cv::Point3f(0, 0, 0);
+	cv::Point3f lineEndIn3D = cv::Point3f(0, 0, 0);
 
-	float lastXpos;
-	float lastZpos;
 	float nowXpos;
 	float nowZpos;
 	float angle;
+	double angleAlpha;
+	float robotYawAngle;
 
 	float lineSlope;
-	unsigned int status = BEFORE_GRASSLAND_STAGE_2;
+	unsigned int status = BEFORE_GRASSLAND_STAGE_1;
 
 private:
+
 	rs2::pointcloud  rs2Cloud;
 	rs2::points      rs2Points;
 
@@ -122,6 +141,9 @@ private:
 
 	//opencv module
 
+	cv::KalmanFilter KF;
+	cv::Mat measurement;
+
 	CameraArguments argsLeft;
 	CameraArguments argsRight;
 	cv::Mat intrinsicMatrixLeft;
@@ -135,6 +157,7 @@ private:
 	cv::Mat channelR;
 	cv::Mat channelH;
 	cv::Mat channelS;
+	cv::Mat channelB;
 	cv::Mat maskImage;
 	cv::Mat dstImage;
 	cv::Mat dst2Image;

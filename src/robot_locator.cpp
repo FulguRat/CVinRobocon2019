@@ -13,8 +13,10 @@ dstViewer(new pcl::visualization::PCLVisualizer("Advanced Viewer"))
     duneROI       = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
     // frontFenseROI = { -1.3/*xMin*/,  0.3/*xMax*/, 1.2/*zMin*/, 2.1/*zMax*/ };
     frontFenseROI = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 1.5/*zMax*/ };
-	grasslandFenseROI = { -0.6/*xMin*/,  0.4/*xMax*/, 0.0/*zMin*/, 3.0/*zMax*/ };
-
+	if(MODEL == LEFT_MODEL)
+		grasslandFenseROI = { -1.1/*xMin*/,  0.4/*xMax*/, 0.0/*zMin*/, 3.0/*zMax*/ };
+	else
+		grasslandFenseROI = { -0.4/*xMin*/,  1.1/*xMax*/, 0.0/*zMin*/, 3.0/*zMax*/ };
 	dstViewer->setBackgroundColor(0.259, 0.522, 0.957);
     dstViewer->addPointCloud<pointType>(dstCloud, "Destination Cloud");
     dstViewer->addCoordinateSystem(0.2, "view point");
@@ -115,9 +117,6 @@ pPointCloud RobotLocator::updateCloud(void)
 
 void RobotLocator::preProcess(void)
 {
-
-
-
 	//-- Pass through filter
 
 	pcl::PassThrough<pointType> pass;
@@ -131,8 +130,10 @@ void RobotLocator::preProcess(void)
 	pass.setFilterFieldName("z");
 	if(status == BEFORE_GRASSLAND_STAGE_2 || status == PASSING_GRASSLAND_STAGE_1)
 		pass.setFilterLimits(0.0f, 2.0f);
+	else if(status == PASSING_GRASSLAND_STAGE_2)
+		pass.setFilterLimits(0.0f, 1.5f);
 	else
-		pass.setFilterLimits(0.0f, 4.0f);
+		pass.setFilterLimits(0.0f, 2.0f);
 	pass.filter(*filteredCloud);
 
 
@@ -186,6 +187,10 @@ pcl::ModelCoefficients::Ptr RobotLocator::extractGroundCoeff(pPointCloud cloud)
 	if (angleCosine > 0.8f && distDifference < 0.04f)
 	{
 		groundCoeff = coefficients;
+		thisD435->groundCoeff[0] = coefficients->values[0];
+		thisD435->groundCoeff[1] = coefficients->values[1];
+		thisD435->groundCoeff[2] = coefficients->values[2];
+		thisD435->groundCoeff[3] = coefficients->values[3];
 	}
 
 	return groundCoeff;
@@ -193,28 +198,40 @@ pcl::ModelCoefficients::Ptr RobotLocator::extractGroundCoeff(pPointCloud cloud)
 
 pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 {
+	Eigen::Vector3f vecNormal(groundCoeff->values[0], groundCoeff->values[1], groundCoeff->values[2]);
 	//-- Define the rotate angle about x-axis
-	double angleAlpha = atan(-groundCoeff->values[2] / groundCoeff->values[1]);
+	//double angleAlpha = atan(-groundCoeff->values[2] / groundCoeff->values[1]);
+	double angle = acos(-groundCoeff->values[1] * groundCoeff->values[3] / (vecNormal.norm() * fabs(groundCoeff->values[3])));
+	//cout << "angle: " << angle * 180 / CV_PI;
+	Eigen::Vector3f Axis = (-groundCoeff->values[3] / fabs(groundCoeff->values[3])) * vecNormal.cross(Eigen::Vector3f(0, -1, 0));
+	Axis.normalize();
 
 	//-- Define the rotate transform
 	Eigen::Affine3f rotateToXZPlane = Eigen::Affine3f::Identity();
-	rotateToXZPlane.rotate(Eigen::AngleAxisf(angleAlpha, Eigen::Vector3f::UnitX()));
-
+	//rotateToXZPlane.rotate(Eigen::AngleAxisf(angleAlpha, Eigen::Vector3f::UnitX()));
+	rotateToXZPlane.rotate(Eigen::AngleAxisf(angle, -Axis));
+	
 	//-- Apply transform
 	pcl::transformPointCloud(*cloud, *cloud, rotateToXZPlane);
 
 	//-- Update rotated ground coefficients
-	Vector3d vecNormal(groundCoeff->values[0], groundCoeff->values[1], groundCoeff->values[2]);
+	
 
-	groundCoeffRotated->values[0] = groundCoeff->values[0];
-	groundCoeffRotated->values[1] = -vecNormal.norm() * (groundCoeff->values[3] / abs(groundCoeff->values[3]));
-	groundCoeffRotated->values[2] = 0.0f;
-	groundCoeffRotated->values[3] = groundCoeff->values[3];
+	//groundCoeffRotated->values[0] = groundCoeff->values[0];
+	//groundCoeffRotated->values[1] = -vecNormal.norm() * (groundCoeff->values[3] / abs(groundCoeff->values[3]));
+	//groundCoeffRotated->values[2] = 0.0f;
+	//groundCoeffRotated->values[3] = groundCoeff->values[3];
+	Eigen::Vector3f groundCoeffRotatedVec = rotateToXZPlane * vecNormal;
 
-	// cout << "Ground coefficients: " << groundCoeffRotated->values[0] << " " 
-	//                                 << groundCoeffRotated->values[1] << " "
-	//                                 << groundCoeffRotated->values[2] << " " 
-	//                                 << groundCoeffRotated->values[3] << endl;
+	groundCoeffRotated->values[0] = groundCoeffRotatedVec[0];
+	groundCoeffRotated->values[1] = groundCoeffRotatedVec[1];
+	groundCoeffRotated->values[2] = groundCoeffRotatedVec[2];
+	groundCoeffRotated->values[3] = fabs(groundCoeff->values[3]) / vecNormal.norm();
+
+	 cout << "Ground coefficients: " << groundCoeffRotated->values[0] << " " 
+	                                 << groundCoeffRotated->values[1] << " "
+	                                 << groundCoeffRotated->values[2] << " " 
+	                                 << groundCoeffRotated->values[3] << endl;
 
 	return cloud;
 }
@@ -377,10 +394,19 @@ void RobotLocator::extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi,
 			coefficients->values[1] * cloud->points[indicesROI->indices[i]].y +
 			coefficients->values[2] * cloud->points[indicesROI->indices[i]].z +
 			coefficients->values[3]) / vecNormal.norm();
-
-		if (angleCosine > 0.80 && distanceToPlane < 0.10)
+		if (status == BEFORE_GRASSLAND_STAGE_1)
 		{
-			indices->indices.push_back(indicesROI->indices[i]);
+			if (angleCosine > 0.85 && distanceToPlane < 0.05)
+			{
+				indices->indices.push_back(indicesROI->indices[i]);
+			}
+		}
+		else
+		{
+			if (angleCosine > 0.8 && distanceToPlane < 0.1)
+			{
+				indices->indices.push_back(indicesROI->indices[i]);
+			}
 		}
 	}
 }
@@ -751,47 +777,16 @@ void RobotLocator::locatePassingDune(void)
 
 void RobotLocator::locateBeforeGrasslandStage1(void)
 {
-    extractVerticalCloud(filteredCloud); 
+	extractGroundCoeff(filteredCloud);
+	thisD435->FindFenseCorner(HORZISONAL_FENSE);
+	frontFenseDist = thisD435->GetDepth(thisD435->fenseCorner, thisD435->fenseCornerIn3D);
+	leftFenseDist = thisD435->nowXpos + fenseCorner2fenseDist;
+    cout << "front fense distance  " << frontFenseDist << "  leftFenseDist " << leftFenseDist << endl;
 
-    //-- Perform the plane segmentation with specific indices
-    pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
-    pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+	if (leftFenseDist < 1500) { nextStatusCounter++; }
+	else { nextStatusCounter = 0; }
 
-    extractPlaneWithinROI(verticalCloud, frontFenseROI, inliers, coefficients);
-    frontFenseROI = updateObjectROI(verticalCloud, inliers, 0.1, 0.1, 0.3, 0.3);
-    
-    //-- Change the color of the extracted part for debuging
-    for (int i = 0; i < inliers->indices.size(); i++)
-    {
-        dstCloud->points[inliers->indices[i]].r = 251;
-        dstCloud->points[inliers->indices[i]].g = 188;
-        dstCloud->points[inliers->indices[i]].b = 5;
-    }
-	
-
-	frontFenseROI = updateObjectROI(verticalCloud, inliers, 0.3, 0.0, 0.1, 0.1);
-
-	Eigen::Vector4f minVector, maxVector;
-	pcl::getMinMax3D(*verticalCloud, *inliers, minVector, maxVector);
-
-    //-- Calculate the vertical distance to front fense
-	thisD435->lastXpos = fenseCornerX;
-	thisD435->lastXpos = frontFenseDist;
-
-    frontFenseDist = maxVector[2];
-    fenseCornerX = minVector[0];
-
-	thisD435->nowXpos = fenseCornerX;
-	thisD435->nowZpos = frontFenseDist;
-
-	angle = thisD435->GetAngle();
-
-     /*if (fenseCornerX > 0.0f) { nextStatusCounter++; }
-     else { nextStatusCounter = 0; }
-
-     if (nextStatusCounter >= 3) { status++; }*/
-    
-    cout << "front fense distance  " << frontFenseDist << "  x_" << fenseCornerX << endl;
+	if (nextStatusCounter >= 2) { status++; thisD435->status++;}
 
     dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
     dstViewer->spinOnce(1);
@@ -802,14 +797,19 @@ void RobotLocator::locateBeforeGrasslandStage2(void)
 	extractGroundCoeff(filteredCloud);
 	thisD435->imgProcess();
 	thisD435->FindPillarCenter();
-	firstRopeDist = thisD435->GetDepth(thisD435->center1, groundCoeff->values[0], groundCoeff->values[1], groundCoeff->values[2], 1000 * groundCoeff->values[3]);
-	angle = thisD435->GetAngle();
+	thisD435->FindFenseCorner(VERTICAL_FENSE);
+	firstRopeDist = thisD435->GetDepth(thisD435->center1, thisD435->center1In3D);
+	if (MODEL == LEFT_MODEL)
+		leftFenseDist = fenseToPillarDist - thisD435->nowXpos;
+	else
+		rightFenseDist = fenseToPillarDist + thisD435->nowXpos;
 	cout << "firstRopeDist: " << firstRopeDist << endl;
+	cout << "leftFenseDist: " << leftFenseDist << endl;
 	//model change
-	if ((thisD435->center1.y > 440 || thisD435->center1.x > 580) && status == BEFORE_GRASSLAND_STAGE_2)
+	if (thisD435->center1.x > 500)
 	{
-		status = PASSING_GRASSLAND_STAGE_1;
-		thisD435->status = PASSING_GRASSLAND_STAGE_1;
+		status++;
+		thisD435->status++;
 	}
 
 }
@@ -819,64 +819,46 @@ void RobotLocator::locatePassingGrasslandStage1(void)
 	extractGroundCoeff(filteredCloud);
 	thisD435->imgProcess();
 	thisD435->FindPillarCenter();
-	secondRopeDist = thisD435->GetDepth(thisD435->center2, groundCoeff->values[0], groundCoeff->values[1], groundCoeff->values[2], 1000 * groundCoeff->values[3]);
-	angle = thisD435->GetAngle();
+	thisD435->FindFenseCorner(VERTICAL_FENSE);
+	secondRopeDist = thisD435->GetDepth(thisD435->center2, thisD435->center2In3D);
+	if (MODEL == LEFT_MODEL)
+		leftFenseDist = fenseToPillarDist - thisD435->nowXpos;
+	else
+		rightFenseDist = fenseToPillarDist + thisD435->nowXpos;
 	cout << "secondRopeDist: " << secondRopeDist << endl;
+	cout << "leftFenseDist: " << leftFenseDist << endl;
 	//model change
-	if (status == PASSING_GRASSLAND_STAGE_1 && (thisD435->center2.y > 440 || thisD435->center2.x > 580))
+	if (thisD435->center2.y > 300)
 	{
-		status = PASSING_GRASSLAND_STAGE_2;
-		thisD435->status = PASSING_GRASSLAND_STAGE_2;
+		status++;
+		thisD435->status++;
 	}
-
 }
 
 void RobotLocator::locatePassingGrasslandStage2(void)
 {
-	extractVerticalCloud(filteredCloud);
-
-	//-- Perform the plane segmentation with specific indices
-	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
-	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
-
-	extractPlaneWithinROI(verticalCloud, grasslandFenseROI, inliers, coefficients);
-	grasslandFenseROI = updateObjectROI(verticalCloud, inliers, 0.1, 0.1, 0.3, 0.3);
-
-	for (int i = 0; i < inliers->indices.size(); i++)
+	extractGroundCoeff(filteredCloud);
+	thisD435->FindLineEnd();
+	grassFenseDist = thisD435->GetDepth(thisD435->lineEnd, thisD435->lineEndIn3D);
+	if (MODEL == LEFT_MODEL)
+		leftFenseDist = line2fenseDist - thisD435->nowXpos;
+	else
+		rightFenseDist = line2fenseDist + thisD435->nowXpos;
+	cout << "grassFenseDist: " << grassFenseDist << endl;
+	cout << "leftFenseDist: " << leftFenseDist << endl;
+	if (thisD435->lineEnd.x < 100)
 	{
-		dstCloud->points[inliers->indices[i]].r = 251;
-		dstCloud->points[inliers->indices[i]].g = 188;
-		dstCloud->points[inliers->indices[i]].b = 5;
+		status++;
+		thisD435->status++;
 	}
+}
 
-	//-- The formula of dune is ax + by + cz + d = 0, which y = cameraHeight - 0.05
-	Vector3d vecNormal = Vector3d(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
-
-	Eigen::Vector4f minVector, maxVector;
-
-	pcl::getMinMax3D(*verticalCloud, *inliers, minVector, maxVector);
-
-	thisD435->lastXpos = fenseCornerX;
-	thisD435->lastXpos = grassFenseDist;
-
-	grassFenseDist = maxVector[2];
-	fenseCornerX = minVector[0];
-
-	thisD435->nowXpos = fenseCornerX;
-	thisD435->nowZpos = grassFenseDist;
-
-	angle = thisD435->GetAngle();
-
-	// if (frontFenseDist < 0.3f) { nextStatusCounter++; }
-	// else { nextStatusCounter = 0; }
-
-	// if (nextStatusCounter >= 3) { status++; }
-
-	cout << "grassFenseDist  " << grassFenseDist << endl;
-
-	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
-	dstViewer->spinOnce(1);
-
+void RobotLocator::climbingMountain(void)
+{
+	extractGroundCoeff(filteredCloud);
+	thisD435->FindLineEnd();
+	thisD435->FindFenseCorner(HORZISONAL_FENSE);
+	frontFenseDist = thisD435->GetDepth(thisD435->fenseCorner, thisD435->fenseCornerIn3D);
 }
 
 bool RobotLocator::isStoped(void)

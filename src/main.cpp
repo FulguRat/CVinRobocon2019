@@ -57,6 +57,9 @@ int main(int argc, char* argv[])
 				fajLocator.locatePassingGrasslandStage2();
 				break;
 
+			case CLIMBING_MOUNTAIN:
+				fajLocator.climbingMountain();
+				break;
 			default:
 				break;
 		}

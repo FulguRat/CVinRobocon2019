@@ -4,7 +4,7 @@ ActD435::ActD435() : align(RS2_STREAM_COLOR),
 cloudByRS2(new pointCloud)/*,
 viewer("Temp Viewer")*/
 {
-
+	
 }
 
 ActD435::~ActD435()
@@ -14,6 +14,17 @@ ActD435::~ActD435()
 
 void ActD435::init(void)
 {
+	//Kalman Init
+	KF.init(2, 1);
+	measurement = cv::Mat::zeros(1, 1, CV_32F);
+
+	KF.transitionMatrix = (cv::Mat_<float>(2, 2) << 1, 1, 0, 1);  //转移矩阵A
+	setIdentity(KF.measurementMatrix);                                             //测量矩阵H
+	setIdentity(KF.processNoiseCov, cv::Scalar::all(1e-5));                            //系统噪声方差矩阵Q
+	setIdentity(KF.measurementNoiseCov, cv::Scalar::all(1e-1));                        //测量噪声方差矩阵R
+	setIdentity(KF.errorCovPost, cv::Scalar::all(1));
+	randn(KF.statePost, cv::Scalar::all(0), cv::Scalar::all(0.1));
+
 	argsLeft = CAMERA_ARGS_LEFT;
 	argsRight = CAMERA_ARGS_RIGHT;
 
@@ -26,10 +37,18 @@ void ActD435::init(void)
 	intrinsicMatrixRight = (cv::Mat_<float>(3, 3) << argsRight.fx, argsRight.skew, argsRight.cx, \
 		0.0f, argsRight.fy, argsRight.cy, \
 		0.0f, 0.0f, 1.0f);
+	groundCoeff.push_back(0);
+	groundCoeff.push_back(0);
+	groundCoeff.push_back(0);
+	groundCoeff.push_back(0);
+	//sensor sen;
+	//sen.set_option(RS2_OPTION_EXPOSURE, 25);
+
 	//-- Add desired streams to configuration
 	cfg.enable_stream(RS2_STREAM_DEPTH, 640, 480, RS2_FORMAT_Z16, 30);
 	cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
 
+	//cfg.enable_device_from_file("1.bag");
 	//-- Instruct pipeline to start streaming with the requested configuration
 	pipe.start(cfg);
 
@@ -66,6 +85,7 @@ pPointCloud ActD435::update(void)
 	rs2::depth_frame alignedDepthFrame = frameSet.get_depth_frame();
 
 	srcImage = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)colorFrame.get_data(), cv::Mat::AUTO_STEP);
+	//tColor(srcImage, srcImage, CV_RGB2BGR);
 
 	//-- Map Color texture to each point
 	//rs2Cloud.map_to(colorFrame);
@@ -74,18 +94,19 @@ pPointCloud ActD435::update(void)
 	rs2Points = rs2Cloud.calculate(alignedDepthFrame);
 	cloudByRS2 = pointsToPointCloud(rs2Points);
 
-	stop = chrono::steady_clock::now();
-	totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
+	//stop = chrono::steady_clock::now();
+	//totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
 	// cout << double(totalTime.count()) / 1000.0f << endl;
 
 	return cloudByRS2;
 }
 void ActD435::imgProcess()
 {
+	
 	//srcImage = cv::imread("18.jpg");
 	cv::split(srcImage, channels);
 	channelR = channels[2].clone();
-	dstImage = srcImage.clone();
+	//dstImage = srcImage.clone();
 
 	//imshow("BGR", srcImage);
 	//imshow("ChannelR", channelR);
@@ -98,8 +119,6 @@ void ActD435::imgProcess()
 	//imshow("HSV", srcImage);
 	//imshow("ChannelH", channelH);
 	//imshow("ChannelS", channelS);
-
-
 
 	//inRange(channelR, minRTkb.slider, maxRTkb.slider, channels[0]);
 	//inRange(channelH, minHTkb.slider, maxHTkb.slider, channels[1]);
@@ -115,8 +134,8 @@ void ActD435::imgProcess()
 
 	cv::bitwise_and(channels[0], channels[1], maskImage);
 	cv::bitwise_and(maskImage, channels[2], maskImage);
-	dst2Image = cv::Mat::zeros(cv::Size(640, 480), CV_8UC1);
-	bitwise_and(dstImage, dstImage, dst2Image, maskImage);
+	//dst2Image = cv::Mat::zeros(cv::Size(640, 480), CV_8UC1);
+	//bitwise_and(dstImage, dstImage, dst2Image, maskImage);
 
 	//imshow("dst2", dst2Image);
 	cv::imshow("mask", maskImage);
@@ -130,9 +149,9 @@ void ActD435::FindPillarCenter(void)
 	contours.clear();
 	hierarchy.clear();
 
-	if (center2.y < 280 && status == PASSING_GRASSLAND_STAGE_1)
+	if (status == PASSING_GRASSLAND_STAGE_1)
 	{
-		cv::Rect remove(320, 300, 320, 180);
+		cv::Rect remove(400, 0, 239, 479);
 		dst(remove).setTo(0);
 	}
 
@@ -156,7 +175,7 @@ void ActD435::FindPillarCenter(void)
 		cv::Rect rect = boundingRect(contours[idx]);
 		float x = rect.x + rect.width / 2;
 		float y = rect.y + rect.height;
-		if (center1.y > 350)
+		if (rect.width < 100)
 		{
 			center1 = cv::Point2f(x, y);
 		}
@@ -185,16 +204,8 @@ void ActD435::FindPillarCenter(void)
 			else
 				center1 = cv::Point2f((index + rect.x + rect.width) / 2, y);
 		}
-		circle(dst, center1, 2, 255, -1);
-		contours.erase(contours.begin() + idx);
-		idx = 0;
-		if (contours.size() < 1)
-			return;
-		for (size_t i = 0; i < contours.size(); i++)
-		{
-			if (contourArea(contours[i]) > contourArea(contours[idx]))
-				idx = i;
-		}
+		circle(dst, center1, 5, 255, -1);
+
 		cout << "x: " << center1.x << "y: " << center1.y << endl;
 	}
 	break;
@@ -206,13 +217,9 @@ void ActD435::FindPillarCenter(void)
 		float x = rect.x + rect.width / 2;
 		float y = rect.y + rect.height;
 
-		//if ((fabs(x - center2.x) < 30 && fabs(y - center2.y) < 30) || (center2.x < 0.1))
 		center2 = cv::Point2f(x, y);
-		//else
-		{
 
-		}
-		circle(dst, center2, 2, 255, -1);
+		circle(dst, center2, 5, 255, -1);
 		cout << "x: " << center2.x << "y: " << center2.y << endl;
 	}
 	break;
@@ -222,93 +229,283 @@ void ActD435::FindPillarCenter(void)
 
 }
 
-void ActD435::FindLines(void)
+void ActD435::FindFenseCorner(int fenseType)
 {
-	cv::Mat lineImg(cv::Size(640, 480), CV_8UC1);
+	cv::split(srcImage, channels);
+	channelR = channels[2].clone();
+	
+	cv::inRange(channelR, 100, 255, channels[2]);
 
-	vector<cv::Vec2f> lines;
+	maskImage = channels[2].clone();
 
-	Canny(channels[0], lineImg, 80, 80 * 2);
+	vector<cv::Point2f> line;
+	int begin = maskImage.rows - 1;
+	int end = 0;
+	int cols = 0;
+	int countFlag = 0;
+	int blackPixNum = 0;
+	uchar thresh = 10;
 
-	cv::Mat houghline = lineImg.clone();
+	//按列从最后一行逆序遍历
+	if(fenseType == HORZISONAL_FENSE)
+		cols = maskImage.cols - 1;
+	//按列从最后一行顺序遍历
+	else 
+		cols = 0;
 
-	int maxy = 0;
-	int index = 0;
-
-	HoughLines(lineImg, lines, 1.0, CV_PI / 180, 150, 0, 0);
-
-	for (size_t i = 0; i < lines.size(); i++)
+	do
 	{
-		float rpho = lines[i][0];
-		float theta = lines[i][1];
+		blackPixNum = 0;
+		int tempbegin = 0;
 
-		//cout << theta << endl;
-		if ((theta > 47 * CV_PI / 90) || (theta < 43 * CV_PI / 90))
+		if (fenseType == HORZISONAL_FENSE)
+			--cols;
+		else
+			++cols;
+		for (int rows = begin; rows > end; --rows)
 		{
-			lines.erase(lines.begin() + i);
-			continue;
-		}
-
-		double a = cos(theta);
-		double b = sin(theta);
-
-		double x0 = a * rpho;
-		double y0 = b * rpho;
-
-		//find plane lines
-		{
-			if (y0 > maxy)
+			if (maskImage.at<uchar>(rows, cols) == 0 && countFlag == 0)
 			{
-				index = i;
-				maxy = y0;
+				tempbegin = rows;
+				countFlag = 1;
+			}
+			if (countFlag)
+			{
+				//begin count
+				if (maskImage.at<uchar>(rows, cols) == 0)
+					blackPixNum++;
+				else
+				{
+					//remove white noise in the fense
+					if (   maskImage.at<uchar>(rows - 1, cols) > 0
+						&& maskImage.at<uchar>(rows, cols - 1) > 0
+						&& maskImage.at<uchar>(rows + 1, cols) > 0
+						&& maskImage.at<uchar>(rows, cols + 1) > 0
+						)
+						blackPixNum = 0;
+					else
+						blackPixNum++;
+				}
+					
+				if (blackPixNum > thresh)
+				{					
+					line.push_back(cv::Point(cols, tempbegin));
+					begin = tempbegin + 10;
+					end = rows - 15;
+					countFlag = 0;
+					break;
+				}
+
 			}
 		}
-	}
+		if (begin > 479)
+			begin = 479;
+		if (end < 0)
+			end = 0;
+	} while (blackPixNum > thresh);
 
-	if (lines.size() < 1)
-		return;
-
-	float rpho = lines[index][0];
-	float theta = lines[index][1];
-
-	if ((theta > 47 * CV_PI / 90) || (theta < 43 * CV_PI / 90))
+	if (line.size() > 20)
 	{
-		return;
+		fenseCorner = line[line.size() - 10];
+	}
+	
+	if (fenseType == HORZISONAL_FENSE)
+		GetyawAngle(line[10], line[line.size() - 10], 0);
+	else
+		GetyawAngle(line[10], line[line.size() - 10], CV_PI / 2);
+
+	cout << "robotYawAngle: " << robotYawAngle << endl;
+	circle(maskImage, fenseCorner, 10, 255, -1);
+
+	line.clear();
+	cv::imshow("dst", maskImage);
+	cvWaitKey(1);
+	cout << "x: " << fenseCorner.x << " y:" << fenseCorner.y << endl;
+}
+
+void ActD435::FindLineEnd(void)
+{
+	cv::split(srcImage, channels);
+	channelB = channels[0].clone();
+	channelR = channels[2].clone();
+
+	cv::inRange(channelB, 0, 110, channels[0]);
+	cv::inRange(channelR, 0, 131, channels[2]);
+
+	cv::imshow("channels 0", channels[0]);
+	cvWaitKey(1);
+
+	vector<cv::Point2f> line;
+
+	if (MODEL == LEFT_MODEL)
+		maskImage = channels[0].clone();
+	else
+		maskImage = channels[2].clone();
+
+
+	int begin = 0;
+	int end = 0;
+	int rows = maskImage.rows - 1;
+
+	if (MODEL == LEFT_MODEL)
+	{
+		begin = maskImage.cols - 1;
+		end = 0;
+		
+		int countFlag = 0;
+		int blackPixNum = 0;
+		int blackPixNumLast = 0;
+		uchar thresh = 6;
+
+		do
+		{
+			int tempbegin = 0;
+			blackPixNumLast = blackPixNum;
+			blackPixNum = 0;
+			uchar* data = maskImage.ptr<uchar>(rows--);
+			for (int cols = begin; cols > end - 10; --cols)
+			{
+				if (data[cols] == 0 && countFlag == 0)
+				{
+					tempbegin = cols;
+					countFlag = 1;
+				}
+				if (countFlag)
+				{
+					//begin count
+					if (data[cols] == 0)
+						blackPixNum++;
+					//finish count
+					else
+					{
+						countFlag = 0;
+						//update
+						if (blackPixNum < thresh)
+						{
+							blackPixNum = 0;
+							continue;
+						}
+
+						if (blackPixNum > thresh)
+						{
+							if (blackPixNum - blackPixNumLast > 3 || blackPixNum > 100)
+							{
+								rows -= 20;
+								break;
+							}
+							if (tempbegin > 550 || end > tempbegin)
+							{
+								continue;
+							}
+							line.push_back(cv::Point(cols, tempbegin));
+							begin = tempbegin + 10;
+							end = cols - 10;
+							break;
+						}
+					}
+				}
+			}
+			if (begin > 639)
+				begin = 639;
+			if (end < 0)
+				end = 0;
+		} while (blackPixNum > thresh && rows > 0);
+	}
+	else
+	{
+		begin = 1;
+		end = maskImage.cols / 2;
+
+		int countFlag = 0;
+		int blackPixNum = 0;
+		int blackPixNumLast = 0;	
+		uchar thresh = 5;
+	
+		do
+		{
+			int tempbegin = 0;
+			blackPixNumLast = blackPixNum;
+			blackPixNum = 0;
+			uchar* data = maskImage.ptr<uchar>(rows--);
+			for (int cols = begin; cols < end + 30; ++cols)
+			{
+				if (data[cols] == 0 && countFlag == 0)
+				{
+					tempbegin = cols;
+					countFlag = 1;
+				}
+				if (countFlag)
+				{
+					//begin count
+					if (data[cols] == 0)
+						blackPixNum++;
+					//finish count
+					else
+					{
+						countFlag = 0;
+						//update
+						if (blackPixNum < thresh)
+						{
+							blackPixNum = 0;
+							continue;
+						}
+
+						if (blackPixNum > thresh)
+						{
+							if (blackPixNum - blackPixNumLast > 5 || blackPixNum > 200)
+							{
+								rows -= 20;
+								break;
+							}
+							if (tempbegin < 100 || tempbegin > end)
+							{
+								continue;
+							}
+							begin = tempbegin;
+							end = cols - 1;
+							break;
+						}
+					}
+				}
+			}
+		} while (blackPixNum > thresh && rows > 0);
+		
 	}
 
-	cout << "theta: " << theta << endl;
+	if (line.size() > 20)
+	{
+		lineEnd = line[line.size() - 1];
+		GetyawAngle(line[10], line[line.size() - 10], CV_PI / 2);
+	}
 
-	double a = cos(theta);
-	double b = sin(theta);
+	cout << "robotYawAngle: " << robotYawAngle << endl;
 
-	double x0 = a * rpho;
-	double y0 = b * rpho;
+	cv::circle(maskImage, cv::Point((begin - 10) / 2 + end / 2, rows + 1), 3, 0, -1);
 
-	cv::Point pt1, pt2;
-	pt1.x = cvRound(x0 - 1000 * b);
-	pt1.y = cvRound(y0 + 1000 * a);
-	pt2.x = cvRound(x0 + 1000 * b);
-	pt2.y = cvRound(y0 - 1000 * a);
-	line(houghline, pt1, pt2, 255, 2, CV_AA);
+	
+	cout << "x: " << lineEnd.x << " y:" << lineEnd.y << endl;
 
-	imshow("houghline", houghline);
+	imshow("dst", maskImage);
 
 	cvWaitKey(1);
 }
 
-float ActD435::GetDepth(cv::Point2f& pt, float a, float b, float c, float d)
+cv::Point3f ActD435::GetIrCorrdinate(cv::Point2f& pt)
 {
-	double angleAlpha = (atan(c / b));
+	float a = groundCoeff[0];
+	float b = groundCoeff[1];
+	float c = groundCoeff[2];
+	float d = groundCoeff[3] * 1000;
+	angleAlpha = asin(fabs(c) / sqrt(a * a + b * b + c * c));
 
-	cout << "angle: " << angleAlpha << endl;
+	cout << "angleAlpha: " << angleAlpha * 180 / CV_PI << endl;
 	cv::Mat RGBpixed;
 	RGBpixed = (cv::Mat_<float>(3, 1) << pt.x, pt.y, 1);
 
 	float Zc = 0, Xir = 0, Yir = 0, Zir = 0, m = 0, n = 0, t = 0;
-	cv::Mat C = (rotationMatrix.inv()) * (translationMatrix);
-	//cout << C << endl;
-	cv::Mat K = rotationMatrix.inv() * intrinsicMatrixLeft.inv() * (RGBpixed);
-	//cout << K << endl;
+	cv::Mat C = (rotationMatrix.t()) * (translationMatrix);
+
+	cv::Mat K = rotationMatrix.t() * intrinsicMatrixLeft.inv() * (RGBpixed);
 
 	m = K.at<float>(0, 0);
 	n = K.at<float>(1, 0);
@@ -320,38 +517,52 @@ float ActD435::GetDepth(cv::Point2f& pt, float a, float b, float c, float d)
 	Yir = n * Zc - C.at<float>(1, 0);
 	Zir = t * Zc - C.at<float>(2, 0);
 
-	if (status == BEFORE_GRASSLAND_STAGE_2)
-	{
-		lastXpos = center1In3D.x;
-		lastZpos = center1In3D.z;
-		center1In3D = cv::Point3f(Xir, Yir, Zir);
-		nowXpos = center1In3D.x;
-		nowZpos = center1In3D.z;
-	}
-		
-	if (status == PASSING_GRASSLAND_STAGE_1)
-	{
-		lastXpos = center2In3D.x;
-		lastZpos = center2In3D.z;
-		center2In3D = cv::Point3f(Xir, Yir, Zir);
-		nowXpos = center2In3D.x;
-		nowZpos = center2In3D.z;
-	}	
 	cout << "groundCoeff: " << a << "\t" << b << "\t" << c << "\t" << d << endl;
 	cout << "IrCoorinate: " << Xir << "\t" << Yir << "\t" << Zir << endl;
 	cout << "Zc: " << Zc << "\tZir: " << Zir << endl;
 
-	float realDistance = Zir * cos(angleAlpha) - Yir * sin(angleAlpha) + 120;
+	return cv::Point3f(Xir, Yir, Zir);
+}
 
+float ActD435::GetDepth(cv::Point2f& pt,cv::Point3f& pt1)
+{
+	float realDistance = 0;
+	float distance = 0;
+	float angle = 0;
+
+	pt1 = GetIrCorrdinate(pt);
+	distance = pt1.z * cos(angleAlpha) - pt1.y * sin(angleAlpha);
+	angle = atan(pt1.x / distance);
+	realDistance = (sqrt(distance * distance + pt1.x * pt1.x)) * cos(cameraYawAngel + robotYawAngle - angle);
+	nowXpos = (sqrt(distance * distance + pt1.x * pt1.x)) * sin(cameraYawAngel + robotYawAngle - angle);
+
+	cout << "distance: " << distance << endl;
+	cout << "angle: " << angle * 180 / CV_PI << endl;
 	return realDistance;
 }
 
-float ActD435::GetAngle(void)
+float ActD435::GetyawAngle(cv::Point2f& pt1, cv::Point2f& pt2, float angle)
 {
-	if (lastZpos == 0)
-		return angle;
-	angle = atan((lastZpos - nowZpos) / (lastXpos - nowXpos)) * 180 / CV_PI ;
-	return angle; 
+	cv::Point3f point1In3D;
+	cv::Point3f point2In3D;
+	point1In3D = GetIrCorrdinate(pt1);
+	point2In3D = GetIrCorrdinate(pt2);
+
+	double rotatedAngle = 0;
+	float x = point1In3D.x - point2In3D.x;
+	float y = point1In3D.y - point2In3D.y;
+	float z = point1In3D.z - point2In3D.z;
+
+	Eigen::Vector3f Vec(x,y,z);
+	if(z > 0)
+		rotatedAngle = -acos(x / Vec.norm());
+	else
+		rotatedAngle = acos(x / Vec.norm());
+	cout << "rotatedAngle: " << rotatedAngle * 180 / CV_PI;
+	
+	robotYawAngle = rotatedAngle - cameraYawAngel - angle;
+
+	return robotYawAngle;
 }
 
 //======================================================
