@@ -2,8 +2,10 @@
 #include <librealsense2/rs.hpp>
 #include "act_d435.h"
 #include "robot_locator.h"
+#include <chrono>
 
 using namespace std;
+using namespace std::chrono;
 
 int main(int argc, char* argv[])
 {
@@ -16,13 +18,14 @@ int main(int argc, char* argv[])
 
 	while (!fajLocator.isStoped())
 	{
+		
 		fajLocator.updateCloud();
 		fajLocator.preProcess();
-		
+		//steady_clock::time_point t1 = steady_clock::now();
 		switch (fajLocator.status)
 		{
 			case STARTUP_INITIAL:
-				fajLocator.status = BEFORE_GRASSLAND_STAGE_1;
+				fajLocator.status = CLIMBING_MOUNTAIN;
 				break;
 
 			case BEFORE_DUNE_STAGE_1:
@@ -58,11 +61,15 @@ int main(int argc, char* argv[])
 				break;
 
 			case CLIMBING_MOUNTAIN:
-				fajLocator.climbingMountain();
+				fajLocator.locateClimbingMountain();
 				break;
 			default:
 				break;
 		}
+		//steady_clock::time_point t2 = steady_clock::now();
+		//duration<double> time_span = duration_cast<duration<double>>(t2 - t1);
+
+		//printf("%f ms\n", time_span.count() * 1000);
 	}
 
 	return EXIT_SUCCESS;

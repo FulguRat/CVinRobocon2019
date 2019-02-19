@@ -16,7 +16,7 @@
 #define LEFT_MODEL		0
 #define RIGHT_MODEL		1
 
-#define HORZISONAL_FENSE			0
+#define HORIZONAL_FENSE			0
 #define VERTICAL_FENSE				1
 
 #define STARTUP_INITIAL				0
@@ -49,7 +49,7 @@
 
 #define TRANSLATION_MATRIX	 (cv::Mat_<float>(3, 1) << -15.2247f, -0.0541f, -0.7736f)
 
-const float cameraYawAngel = 20 * CV_PI / 180;
+const float cameraYawAngle = 20 * CV_PI / 180;
 
 typedef struct
 {
@@ -67,6 +67,12 @@ typedef struct
 	float p2;
 
 } CameraArguments;
+typedef struct
+{
+	float lineAngle[2] = { 0 };
+	float distance[2] = { 0 };
+	int index[2] = { 0 };
+}houghLine;
 
 using namespace std;
 using namespace rs2;
@@ -87,10 +93,16 @@ public:
 	pPointCloud update(void);
 	void imgProcess(void);
 	void FindPillarCenter(void);
-	void FindFenseCorner(int fenseType);
+	//mode 0 由列逆序遍历 1 由列顺序遍历
+	void FindFenseCorner(int fenseType,int mode);
+	void FindLineCross(void);
 	void FindLineEnd(void);
+	cv::Point GetCrossPoint(cv::Point pt1, cv::Point pt2, cv::Point pt3, cv::Point pt4);
+	cv::Point SetSeedPoint(void);
+	void ClimbingMountain(void);
+	int ClimbingMountainStageJudge(void);
 	float GetDepth(cv::Point2f& pt, cv::Point3f& pt1);
-	float GetyawAngle(cv::Point2f& pt1, cv::Point2f& pt2, float angle);
+	float GetyawAngle(cv::Point2f& pt1, cv::Point2f& pt2, int fenseType);
 	cv::Point3f GetIrCorrdinate(cv::Point2f& pt);
 
 private:
@@ -110,19 +122,24 @@ public:
 	cv::Point2f center2 = cv::Point2f(0, 0);
 	cv::Point2f fenseCorner = cv::Point2f(0, 0);
 	cv::Point2f lineEnd = cv::Point2f(0, 0);
+	cv::Point2f lineCross = cv::Point2f(0, 0);
 	cv::Point3f center1In3D = cv::Point3f(0, 0, 0);
 	cv::Point3f center2In3D = cv::Point3f(0, 0, 0);
 	cv::Point3f fenseCornerIn3D = cv::Point3f(0, 0, 0);
 	cv::Point3f lineEndIn3D = cv::Point3f(0, 0, 0);
+	cv::Point3f lineCrossIn3D = cv::Point3f(0, 0, 0);
+
+	cv::Point seedPoint;
 
 	float nowXpos;
 	float nowZpos;
 	float angle;
 	double angleAlpha;
 	float robotYawAngle;
+	int climbingMountainStage;
 
 	float lineSlope;
-	unsigned int status = BEFORE_GRASSLAND_STAGE_1;
+	unsigned int status = CLIMBING_MOUNTAIN;
 
 private:
 
@@ -140,9 +157,6 @@ private:
 	pPointCloud		 cloudByRS2;
 
 	//opencv module
-
-	cv::KalmanFilter KF;
-	cv::Mat measurement;
 
 	CameraArguments argsLeft;
 	CameraArguments argsRight;

@@ -30,9 +30,12 @@
 
 using namespace Eigen;
 
-const float fenseToPillarDist = 1360;
-const float fenseCorner2fenseDist = 1410;
-const float line2fenseDist = 700;
+const float fense2FarPillarDist = 1360;
+const float fense2ClosePillarDist = 80;
+const float fenseCorner2fenseDist = 1440;
+const float lineCross2RopeDist = 850;
+const float line2fenseDist = 730;
+const float distBetweenRopes = 750;
 //-- ROI of an object
 typedef struct
 {
@@ -83,7 +86,7 @@ public:
     void locateBeforeGrasslandStage2(void);
 	void locatePassingGrasslandStage1(void);
 	void locatePassingGrasslandStage2(void);
-	void climbingMountain(void);
+	void locateClimbingMountain(void);
 
 	bool isStoped(void);
 

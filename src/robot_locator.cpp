@@ -128,15 +128,13 @@ void RobotLocator::preProcess(void)
 
 	pass.setInputCloud(filteredCloud);
 	pass.setFilterFieldName("z");
-	if(status == BEFORE_GRASSLAND_STAGE_2 || status == PASSING_GRASSLAND_STAGE_1)
-		pass.setFilterLimits(0.0f, 2.0f);
-	else if(status == PASSING_GRASSLAND_STAGE_2)
-		pass.setFilterLimits(0.0f, 1.5f);
-	else
-		pass.setFilterLimits(0.0f, 2.0f);
+	pass.setFilterLimits(0.0f, 1.8f);
 	pass.filter(*filteredCloud);
 
-
+	pass.setInputCloud(filteredCloud);
+	pass.setFilterFieldName("y");
+	pass.setFilterLimits(-1.0f, 0.0f);
+	pass.filter(*filteredCloud);
 
 	//-- Down sampling
 
@@ -184,7 +182,7 @@ pcl::ModelCoefficients::Ptr RobotLocator::extractGroundCoeff(pPointCloud cloud)
 	double originDistanceThis = coefficients->values[3] / vecNormalThis.norm();
 	double distDifference = abs(originDistanceThis - originDistanceLast);
 
-	if (angleCosine > 0.8f && distDifference < 0.04f)
+	//if (angleCosine > 0.8f && distDifference < 0.04f)
 	{
 		groundCoeff = coefficients;
 		thisD435->groundCoeff[0] = coefficients->values[0];
@@ -778,39 +776,65 @@ void RobotLocator::locatePassingDune(void)
 void RobotLocator::locateBeforeGrasslandStage1(void)
 {
 	extractGroundCoeff(filteredCloud);
-	thisD435->FindFenseCorner(HORZISONAL_FENSE);
+	thisD435->imgProcess();
+
+	thisD435->FindFenseCorner(HORIZONAL_FENSE, 0);
 	frontFenseDist = thisD435->GetDepth(thisD435->fenseCorner, thisD435->fenseCornerIn3D);
-	leftFenseDist = thisD435->nowXpos + fenseCorner2fenseDist;
-    cout << "front fense distance  " << frontFenseDist << "  leftFenseDist " << leftFenseDist << endl;
 
-	if (leftFenseDist < 1500) { nextStatusCounter++; }
-	else { nextStatusCounter = 0; }
+	if (MODEL == LEFT_MODEL)
+	{
+		leftFenseDist = fenseCorner2fenseDist - thisD435->nowXpos;
 
+		cout << "nowXpos: " << thisD435->nowXpos << endl;
+		cout << "front fense distance  " << frontFenseDist << "  leftFenseDist " << leftFenseDist << endl;
+
+		if (leftFenseDist < 1400) { nextStatusCounter++; }
+		else { nextStatusCounter = 0; }
+	}
+	else
+	{
+		rightFenseDist = fenseCorner2fenseDist + thisD435->nowXpos;
+
+		cout << "front fense distance  " << frontFenseDist << "  rightFenseDist " << rightFenseDist << endl;
+
+		if (rightFenseDist < 1400) { nextStatusCounter++; }
+		else { nextStatusCounter = 0; }
+	}
+    
 	if (nextStatusCounter >= 2) { status++; thisD435->status++;}
 
-    dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
-    dstViewer->spinOnce(1);
 }
 
 void RobotLocator::locateBeforeGrasslandStage2(void)
 {
 	extractGroundCoeff(filteredCloud);
 	thisD435->imgProcess();
+
 	thisD435->FindPillarCenter();
-	thisD435->FindFenseCorner(VERTICAL_FENSE);
+	thisD435->FindFenseCorner(VERTICAL_FENSE, 0);
+
 	firstRopeDist = thisD435->GetDepth(thisD435->center1, thisD435->center1In3D);
-	if (MODEL == LEFT_MODEL)
-		leftFenseDist = fenseToPillarDist - thisD435->nowXpos;
-	else
-		rightFenseDist = fenseToPillarDist + thisD435->nowXpos;
 	cout << "firstRopeDist: " << firstRopeDist << endl;
-	cout << "leftFenseDist: " << leftFenseDist << endl;
-	//model change
-	if (thisD435->center1.x > 500)
+
+	if (MODEL == LEFT_MODEL)
 	{
-		status++;
-		thisD435->status++;
+		leftFenseDist = fense2FarPillarDist - thisD435->nowXpos;
+		cout << "leftFenseDist: " << leftFenseDist << endl;
+
+		if (thisD435->center1.x > 450) { nextStatusCounter++; }
+		else { nextStatusCounter = 0; }
 	}
+	else
+	{
+		rightFenseDist = fense2FarPillarDist - thisD435->nowXpos;
+		cout << "rightFenseDist: " << rightFenseDist << endl;
+
+		if (thisD435->center1.x < 190) { nextStatusCounter++; }
+		else { nextStatusCounter = 0; }
+	}
+
+	//model change
+	if (nextStatusCounter >= 2) { status++; thisD435->status++; }
 
 }
 
@@ -818,47 +842,87 @@ void RobotLocator::locatePassingGrasslandStage1(void)
 {
 	extractGroundCoeff(filteredCloud);
 	thisD435->imgProcess();
+
 	thisD435->FindPillarCenter();
-	thisD435->FindFenseCorner(VERTICAL_FENSE);
+	thisD435->FindFenseCorner(VERTICAL_FENSE, 1);
+
 	secondRopeDist = thisD435->GetDepth(thisD435->center2, thisD435->center2In3D);
-	if (MODEL == LEFT_MODEL)
-		leftFenseDist = fenseToPillarDist - thisD435->nowXpos;
-	else
-		rightFenseDist = fenseToPillarDist + thisD435->nowXpos;
+	firstRopeDist = secondRopeDist - distBetweenRopes;
+
 	cout << "secondRopeDist: " << secondRopeDist << endl;
-	cout << "leftFenseDist: " << leftFenseDist << endl;
-	//model change
-	if (thisD435->center2.y > 300)
+
+	if (MODEL == LEFT_MODEL)
 	{
-		status++;
-		thisD435->status++;
+		if (thisD435->nowXpos > 0)
+			leftFenseDist = fense2FarPillarDist - thisD435->nowXpos;
+		else
+			leftFenseDist = fense2ClosePillarDist - thisD435->nowXpos;
+		cout << "leftFenseDist: " << leftFenseDist << endl;
 	}
+	else
+	{
+		if (thisD435->nowXpos > 0)
+			rightFenseDist = fense2ClosePillarDist - thisD435->nowXpos;
+		else
+			rightFenseDist = fense2FarPillarDist - thisD435->nowXpos;
+		cout << "rightFenseDist: " << rightFenseDist << endl;
+	}
+	
+	//model change
+	if (secondRopeDist < 400) { nextStatusCounter++; }
+	else { nextStatusCounter = 0; }
+
+	if (nextStatusCounter >= 2) { status++; thisD435->status++; }
 }
 
 void RobotLocator::locatePassingGrasslandStage2(void)
 {
 	extractGroundCoeff(filteredCloud);
-	thisD435->FindLineEnd();
-	grassFenseDist = thisD435->GetDepth(thisD435->lineEnd, thisD435->lineEndIn3D);
-	if (MODEL == LEFT_MODEL)
-		leftFenseDist = line2fenseDist - thisD435->nowXpos;
-	else
-		rightFenseDist = line2fenseDist + thisD435->nowXpos;
-	cout << "grassFenseDist: " << grassFenseDist << endl;
-	cout << "leftFenseDist: " << leftFenseDist << endl;
-	if (thisD435->lineEnd.x < 100)
+	thisD435->imgProcess();
+
+	if (thisD435->lineCross.y > 300)
 	{
-		status++;
-		thisD435->status++;
+		thisD435->FindLineEnd();
+		grassFenseDist = thisD435->GetDepth(thisD435->lineEnd, thisD435->lineEndIn3D);
+		cout << "grassFenseDist: " << grassFenseDist << endl;
 	}
+	else
+	{
+		thisD435->FindLineCross();
+		secondRopeDist = thisD435->GetDepth(thisD435->lineCross, thisD435->lineCrossIn3D) - lineCross2RopeDist;
+		cout << "secondRopeDist: " << secondRopeDist << endl;
+	}
+
+	if (MODEL == LEFT_MODEL)
+	{
+		leftFenseDist = line2fenseDist - thisD435->nowXpos;
+		cout << "leftFenseDist: " << leftFenseDist << endl;
+
+		if (thisD435->lineEnd.x < 150 && thisD435->lineEnd.x != 0 && grassFenseDist < 800) { nextStatusCounter++; }
+		else { nextStatusCounter = 0; }
+	}
+	else
+	{
+		rightFenseDist = line2fenseDist + thisD435->nowXpos;
+		cout << "rightFenseDist: " << rightFenseDist << endl;
+
+		if (thisD435->lineEnd.x > 500) { nextStatusCounter++; }
+		else { nextStatusCounter = 0; }
+	}
+		
+	//model change
+	if (nextStatusCounter >= 2) { status++; thisD435->status++; }
 }
 
-void RobotLocator::climbingMountain(void)
+void RobotLocator::locateClimbingMountain(void)
 {
 	extractGroundCoeff(filteredCloud);
-	thisD435->FindLineEnd();
-	thisD435->FindFenseCorner(HORZISONAL_FENSE);
+	thisD435->imgProcess();
+
+	thisD435->ClimbingMountain();
 	frontFenseDist = thisD435->GetDepth(thisD435->fenseCorner, thisD435->fenseCornerIn3D);
+
+	cout << "frontFenseDist:" << frontFenseDist << endl;
 }
 
 bool RobotLocator::isStoped(void)
