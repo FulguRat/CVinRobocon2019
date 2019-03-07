@@ -30,12 +30,6 @@
 
 using namespace Eigen;
 
-const float fense2FarPillarDist = 1360;
-const float fense2ClosePillarDist = 80;
-const float fenseCorner2fenseDist = 1440;
-const float lineCross2RopeDist = 850;
-const float line2fenseDist = 730;
-const float distBetweenRopes = 750;
 //-- ROI of an object
 typedef struct
 {
@@ -47,6 +41,11 @@ typedef struct
 
 } ObjectROI;
 
+typedef struct
+{
+	float x;
+	float y;
+}robotLoc;
 //-- Algorithm implementation for robot locating
 class RobotLocator
 {
@@ -68,7 +67,7 @@ public:
 	pcl::ModelCoefficients::Ptr extractGroundCoeff(pPointCloud cloud);
 
 	pPointCloud rotatePointCloudToHorizontal(pPointCloud cloud);
-
+	pPointCloud rotateMountainPointCloudToHorizontal(pPointCloud cloud);
 	pPointCloud removeHorizontalPlane(pPointCloud cloud, bool onlyGround = false);
 
 	pPointCloud extractVerticalCloud(pPointCloud cloud);
@@ -83,11 +82,12 @@ public:
 	void locatePassingDune(void);
 
     void locateBeforeGrasslandStage1(void);
-    void locateBeforeGrasslandStage2(void);
+	void locateBeforeGrasslandStage2(void);
 	void locatePassingGrasslandStage1(void);
 	void locatePassingGrasslandStage2(void);
+	void locateUnderMountain(void);
 	void locateClimbingMountain(void);
-
+	void locateReachingMountain(void);
 	bool isStoped(void);
 
 	inline pPointCloud getSrcCloud(void) { return srcCloud; }
@@ -96,11 +96,12 @@ public:
 public:
     unsigned int status;
     unsigned int nextStatusCounter;
-	float lineSlope;
-
+	unsigned int roiChangeCounter;
+	
 private:
 	ActD435*        thisD435;
-
+	robotLoc        robotLocNow;
+	robotLoc        robotLocLast;
 	pPointCloud		srcCloud;
 	pPointCloud     filteredCloud;
 	pPointCloud     verticalCloud;
@@ -115,16 +116,17 @@ private:
     ObjectROI               frontFenseROI;
 	ObjectROI				grasslandFenseROI;
 
-    float leftFenseDist;
-	float rightFenseDist;
+	float besideFenseDist;
     float duneDist;
 	float frontFenseDist;
 	float firstRopeDist;
 	float secondRopeDist;
 	float grassFenseDist;
+	float peakDist;
+	float besidebarrierDist;
+	float frontbarrierDist;
 
 	float angle;
-	float fenseCornerX;
 
 	pcl::visualization::PCLVisualizer::Ptr dstViewer;
 };

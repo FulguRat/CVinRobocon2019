@@ -8,13 +8,14 @@
 #include <pcl/point_types.h>
 #include <pcl/pcl_base.h>
 #include <pcl/visualization/cloud_viewer.h>
-#include <chrono>
 #include <opencv2/opencv.hpp>
 #include <Eigen/Dense>
 
-#define MODEL			0
-#define LEFT_MODEL		0
-#define RIGHT_MODEL		1
+extern int mode;
+
+#define DEBUG
+#define LEFT_MODE		0
+#define RIGHT_MODE		1
 
 #define HORIZONAL_FENSE			0
 #define VERTICAL_FENSE				1
@@ -26,30 +27,43 @@
 #define PASSING_DUNE                4
 #define BEFORE_GRASSLAND_STAGE_1	5
 #define BEFORE_GRASSLAND_STAGE_2	6
-#define PASSING_GRASSLAND_STAGE_1	7
-#define PASSING_GRASSLAND_STAGE_2	8
+#define UNDER_MOUNTAIN				7
+#define BONE_RECOGNITION			8
 #define CLIMBING_MOUNTAIN           9
+#define REACH_MOUNTAIN				10
 
-#define CAMERA_ARGS_LEFT  { 605.1696f, 606.6738f,    /*Focal Length*/ \
-							325.2110f, 243.7405f,    /*Principal Point*/ \
+#define CAMERA_ARGS_LEFT  { 619.817, 619.787,    /*Focal Length*/ \
+							330.33,  242.407,    /*Principal Point*/ \
 							-0.0829f,    /*Skew*/ \
 							0.0937f, -0.0774f,   /*Radial Distortion*/ \
 							0.0f, 0.0f   /*Tangential Distortion*/ }
 
 //Arguments of right camera
-#define CAMERA_ARGS_RIGHT { 386.5348f, 387.4860f,    /*Focal Length*/ \
-							330.0357f, 232.8512f,    /*Principal Point*/ \
+#define CAMERA_ARGS_RIGHT { 385.72f,  385.72f,    /*Focal Length*/ \
+							324.6954f, 234.4622f,    /*Principal Point*/ \
 							-0.2563f,    /*Skew*/ \
 							-0.0305f, 0.2411f,   /*Radial Distortion*/ \
 							0.0f, 0.0f   /*Tangential Distortion*/ }
 
-#define ROTATION_MATRIX		 (cv::Mat_<float>(3, 3) << 0.9997f, -0.0209f, 0.0093f, \
-													0.0209f, 0.9998f, -0.0014f, \
-													-0.0093f, 0.0016f, 1.0000f)
+#define ROTATION_MATRIX		 (cv::Mat_<float>(3, 3) << 1.0000f, -0.00026f, -0.00503f, \
+													0.00026f, 1.0000f, -0.0006f, \
+													0.00503f, 0.0006f, 1.0000f)
 
-#define TRANSLATION_MATRIX	 (cv::Mat_<float>(3, 1) << -15.2247f, -0.0541f, -0.7736f)
+#define TRANSLATION_MATRIX	 (cv::Mat_<float>(3, 1) << 64.5776f, -0.0505f, 0.0003f)
 
-const float cameraYawAngle = 20 * CV_PI / 180;
+enum roiFlag {
+	midRoi, leftRoi, rightRoi
+};
+
+extern enum roiFlag colorFrameRoi;
+const float fenseCorner2fenseDist = 1440;
+const float lineCross2RopeDist = 860;
+const float lineCross2FrontfenseDist = 850;
+const float line2BesidefenseDist = 715;
+const float lineEnd2BesidefenseDist = 730;
+const float mountainDist = 1650;
+const float pillar2leftFenseDist = 80;
+const float pillarRadius = 80;
 
 typedef struct
 {
@@ -67,15 +81,29 @@ typedef struct
 	float p2;
 
 } CameraArguments;
-typedef struct
+struct houghLine
 {
-	float lineAngle[2] = { 0 };
-	float distance[2] = { 0 };
-	int index[2] = { 0 };
-}houghLine;
+	float lineAngle = 0;
+	float distance = 0;
+	float lineSlop = 0;
+	int index = 0;
+
+	houghLine& operator= (houghLine& s1)
+	{
+		lineAngle = s1.lineAngle;
+		distance = s1.distance;
+		lineSlop = s1.lineSlop;
+		index = s1.index;
+		return *this;
+	}
+
+};
+
+typedef struct houghLine HoughLine;
 
 using namespace std;
 using namespace rs2;
+using namespace std::chrono;
 
 typedef pcl::PointXYZRGB 			pointType;
 typedef pcl::PointCloud<pointType> 	pointCloud;
@@ -92,15 +120,20 @@ public:
 	void init(void);
 	pPointCloud update(void);
 	void imgProcess(void);
-	void FindPillarCenter(void);
+	void FillHoles(cv::Mat& src);
 	//mode 0 由列逆序遍历 1 由列顺序遍历
 	void FindFenseCorner(int fenseType,int mode);
+	int FindPillarCenter (void);
+	void FindBinaryThresh(void);
 	void FindLineCross(void);
 	void FindLineEnd(void);
 	cv::Point GetCrossPoint(cv::Point pt1, cv::Point pt2, cv::Point pt3, cv::Point pt4);
 	cv::Point SetSeedPoint(void);
-	void ClimbingMountain(void);
 	int ClimbingMountainStageJudge(void);
+	bool ActD435::MatchLine(vector<cv::Vec4i>& src, vector<cv::Vec4i>& dst, float angleThresh, float minDistThresh, float maxDistThresh);
+	void FindHoughLineCross(void);
+	void ActD435::FindLineCrossCenter(float angleThresh, float minDistThresh, float maxDistThresh);
+	void FindHorizonalHoughLine(cv::Mat& src);
 	float GetDepth(cv::Point2f& pt, cv::Point3f& pt1);
 	float GetyawAngle(cv::Point2f& pt1, cv::Point2f& pt2, int fenseType);
 	cv::Point3f GetIrCorrdinate(cv::Point2f& pt);
@@ -114,10 +147,10 @@ private:
 	pPointCloud pointsToPointCloud(const rs2::points& points);
 
 public:
-	vector<vector<cv::Point>> contours;
-	vector<vector<cv::Point>> filterContours;
-	vector<cv::Vec4i> hierarchy;
+	vector<cv::Vec4i> filterLine;
 	vector<float> groundCoeff;
+	Eigen::Matrix3f RotatedMatrix;
+	cv::Point2f pillarLeftUpPt;
 	cv::Point2f center1 = cv::Point2f(0, 0);
 	cv::Point2f center2 = cv::Point2f(0, 0);
 	cv::Point2f fenseCorner = cv::Point2f(0, 0);
@@ -134,11 +167,13 @@ public:
 	float nowXpos;
 	float nowZpos;
 	float angle;
+	float cameraYawAngle;
 	double angleAlpha;
-	float robotYawAngle;
-	int climbingMountainStage;
-
-	float lineSlope;
+	int climbingMountainStage = 0;
+	float pillarPixWidth = 0;
+	int houghlineThresh = 50;
+	int pillarStatus;
+	float pillarHeight;
 	unsigned int status = CLIMBING_MOUNTAIN;
 
 private:
@@ -166,12 +201,20 @@ private:
 	cv::Mat translationMatrix;
 
 
-	vector<cv::Mat> channels;
-	cv::Mat srcImage;
+
+	cv::Mat channelB;
+	cv::Mat channelG;
 	cv::Mat channelR;
+
 	cv::Mat channelH;
 	cv::Mat channelS;
-	cv::Mat channelB;
+	
+	cv::Mat channelL;
+	cv::Mat channelA;
+
+	cv::Mat grayImage;
+	vector<cv::Mat> channels;
+	cv::Mat srcImage;
 	cv::Mat maskImage;
 	cv::Mat dstImage;
 	cv::Mat dst2Image;
