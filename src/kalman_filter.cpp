@@ -8,7 +8,7 @@ kalman_filter::~kalman_filter()
 {
 }
 
-void kalman_filter::initKalmanFilter(int dynamParams, int measureParams, Mat transitionMatrix,
+void kalman_filter::initKalmanFilter(int dynamParams, int measureParams, Mat transitionMatrix, Mat measurementMatrix,
 	double processNoiseCov, double measurementNoiseCov, double errorCovPost)
 {
 
@@ -21,7 +21,7 @@ void kalman_filter::initKalmanFilter(int dynamParams, int measureParams, Mat tra
 
 	KF.transitionMatrix = transitionMatrix;
 
-	setIdentity(KF.measurementMatrix);
+	KF.measurementMatrix = measurementMatrix;
 	setIdentity(KF.processNoiseCov, Scalar::all(processNoiseCov));
 	setIdentity(KF.measurementNoiseCov, Scalar::all(measurementNoiseCov));
 	setIdentity(KF.errorCovPost, Scalar::all(errorCovPost));

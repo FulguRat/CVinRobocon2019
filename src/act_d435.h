@@ -9,9 +9,14 @@
 #include <pcl/pcl_base.h>
 #include <pcl/visualization/cloud_viewer.h>
 #include <chrono>
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/features2d/features2d.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 using namespace std;
 using namespace rs2;
+
 
 typedef pcl::PointXYZRGB 			pointType;
 typedef pcl::PointCloud<pointType> 	pointCloud;
@@ -27,6 +32,7 @@ public:
 
 	void init(void);
 	pPointCloud update(void);
+	cv::Mat				 color;
 
 private:
 	//-- For color-aligned point cloud
@@ -35,6 +41,7 @@ private:
 
 	//-- For point cloud without color
 	pPointCloud pointsToPointCloud(const rs2::points& points);
+
 
 private:
 	rs2::pointcloud  rs2Cloud;
@@ -47,6 +54,8 @@ private:
 	rs2::frameset    alignedFrameSet;
 
 	rs2::align       align;
+	
+
 
 	pPointCloud		 cloudByRS2;
 

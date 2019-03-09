@@ -13,20 +13,24 @@ int main(int argc, char* argv[])
 	kalman_filter   distancefilter;
 	kalman_filter	anglefilter;
 
+	double	distance;
 	//int dynamParams, int measureParams, Mat transitionMatrix,double processNoiseCov, double measurementNoiseCov, double errorCovPost
-	distancefilter.initKalmanFilter(2, 1, (Mat_<float>(2, 2) << 1, 1, 0, 1), 1e-5, 1e-5, 0.1);
+	distancefilter.initKalmanFilter(2, 1, (cv::Mat_<float>(2, 2) << 1, 0.3, 0, 1), (cv::Mat_<float>(1, 2) << 1, 0), 1e-5, 1e-2, 0.1);
 
 	fajD435.init();
 	fajLocator.init(fajD435);
-	fajLocator.status = STARTUP_INITIAL;;
+	fajLocator.status = BEFORE_DUNE_STAGE_2;;
 
 	while (!fajLocator.isStoped())
 	{
 		fajLocator.updateCloud();
-		fajLocator.preProcess();
-		
-		switch (fajLocator.status)
+
+		if (/*fajLocator.orbmatch()*/true)
 		{
+			fajLocator.preProcess();
+
+			switch (fajLocator.status)
+			{
 			case STARTUP_INITIAL:
 				fajLocator.status = BEFORE_GRASSLAND_STAGE_2;
 				break;
@@ -57,7 +61,12 @@ int main(int argc, char* argv[])
 
 			default:
 				break;
+			}
 		}
+
+		distance=distancefilter.predictAndCorrect(Mat_<float>(1, 1)<<fajLocator.diatancemeasurement).at<float>(0,0);
+
+		cout << distance << endl;
 	}
 
 	return EXIT_SUCCESS;

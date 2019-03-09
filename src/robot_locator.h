@@ -12,6 +12,8 @@
 #define BEFORE_GRASSLAND_STAGE_2   6
 #define PASSING_GRASSLAND          7
 
+#define	DIRECTION                  2
+
 #define PI                         3.1415926
 #define STD_ROI {-0.6f, 0.6f, 0.0f, 2.5f}
 
@@ -29,6 +31,7 @@
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/features/normal_3d_omp.h>
+#include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/filters/random_sample.h>
 #include <pcl/filters/conditional_removal.h>
 #include <pcl/filters/radius_outlier_removal.h>
@@ -90,8 +93,8 @@ public:
 
 	bool isStoped(void);
 
-	
-
+	bool orbmatch(void);
+		
 	inline pPointCloud getSrcCloud(void) { return srcCloud; }
 	inline pPointCloud getFilteredCloud(void) { return filteredCloud; }
 
@@ -99,6 +102,7 @@ public:
 	unsigned int status;
 	unsigned int nextStatusCounter;
 	double diatancemeasurement;
+	double anglemeasurement;
 
 private:
 	ActD435*        thisD435;
@@ -107,6 +111,9 @@ private:
 	pPointCloud     filteredCloud;
 	pPointCloud     verticalCloud;
 	pPointCloud     dstCloud;
+	pPointCloud		outgroundcloud;
+	pPointCloud		groundcloud;
+	pPointCloud		forgroundcloud;
 
 	pcl::ModelCoefficients::Ptr groundCoeff;
 	pcl::ModelCoefficients::Ptr groundCoeffRotated;
@@ -116,8 +123,13 @@ private:
 	ObjectROI               duneROI;
 	ObjectROI               frontFenseROI;
 
+	cv::Mat				newFrame;
+	cv::Mat				lastFrame;
+
 	float leftFenseDist;
 	float duneDist;
+	
+	int	  groundpointnumber;
 
 	
 

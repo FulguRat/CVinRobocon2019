@@ -43,16 +43,22 @@ pPointCloud ActD435::update(void)
 	//start = chrono::steady_clock::now();
 
 	//-- Get processed aligned frame
-	alignedFrameSet = align.process(frameSet);
+	//alignedFrameSet = align.process(frameSet);
 
 	//-- Get both color and aligned depth frames
-	rs2::video_frame colorFrame = alignedFrameSet.first(RS2_STREAM_COLOR);
-	rs2::depth_frame alignedDepthFrame = alignedFrameSet.get_depth_frame();
+	//rs2::video_frame colorFrame = alignedFrameSet.first(RS2_STREAM_COLOR);
+	//rs2::depth_frame alignedDepthFrame = alignedFrameSet.get_depth_frame();
+
+
+
 
 	//-- For not align
-	// rs2::video_frame colorFrame = frameSet.get_color_frame();
-	// rs2::depth_frame alignedDepthFrame = frameSet.get_depth_frame();
+	 rs2::video_frame colorFrame = frameSet.get_color_frame();
+	 rs2::depth_frame alignedDepthFrame = frameSet.get_depth_frame();
 
+	color = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)colorFrame.get_data(), cv::Mat::AUTO_STEP);
+
+	color.convertTo(color, CV_BGR2GRAY);
 	//-- Map Color texture to each point
 	//rs2Cloud.map_to(colorFrame);
 

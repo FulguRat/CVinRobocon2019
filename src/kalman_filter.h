@@ -13,7 +13,7 @@ public:
 	~kalman_filter();
 
 	//-- ¿¨¶ûÂüÂË²¨Ïà¹Ø
-	void initKalmanFilter(int dynamParams, int measureParams, Mat transitionMatrix,
+	void initKalmanFilter(int dynamParams, int measureParams, Mat transitionMatrix, Mat measurementMatrix,
 		double processNoiseCov, double measurementNoiseCov, double errorCovPost);
 	Mat predictAndCorrect(Mat measurement);
 

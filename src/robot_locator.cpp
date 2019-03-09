@@ -4,19 +4,23 @@ RobotLocator::RobotLocator() : srcCloud(new pointCloud),
 filteredCloud(new pointCloud),
 verticalCloud(new pointCloud),
 dstCloud(new pointCloud),
+groundcloud(new pointCloud),
+outgroundcloud(new pointCloud),
+forgroundcloud(new pointCloud),
 indicesROI(new pcl::PointIndices),
 groundCoeff(new pcl::ModelCoefficients),
 groundCoeffRotated(new pcl::ModelCoefficients),
 dstViewer(new pcl::visualization::PCLVisualizer("Advanced Viewer"))
 {
-	leftFenseROI = { -0.3/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
-	duneROI = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
+	leftFenseROI = { -0.7/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
+	duneROI = { -0.7/*xMin*/,  0.1/*xMax*/, 0.0/*zMin*/, 2.5/*zMax*/ };
 	// frontFenseROI = { -1.3/*xMin*/,  0.3/*xMax*/, 1.2/*zMin*/, 2.1/*zMax*/ };
-	frontFenseROI = { -0.3/*xMin*/,  0.3/*xMax*/, 0.0/*zMin*/, 1.5/*zMax*/ };
+	frontFenseROI = { -0.5/*xMin*/,  0.1/*xMax*/, 0.0/*zMin*/, 1.5/*zMax*/ };
 
 
 	dstViewer->setBackgroundColor(0.259, 0.522, 0.957);
 	dstViewer->addPointCloud<pointType>(dstCloud, "Destination Cloud");
+	dstViewer->addPointCloud<pointType>(groundcloud, "ground Cloud");
 	dstViewer->addCoordinateSystem(0.2, "view point");
 	dstViewer->initCameraParameters();
 }
@@ -110,13 +114,92 @@ pPointCloud RobotLocator::updateCloud(void)
 {
 	//-- copy the pointer to srcCloud
 	srcCloud = thisD435->update();
+	newFrame = thisD435->color;
 	return srcCloud;
+}
+
+bool RobotLocator::orbmatch(void)
+{
+	bool acept = true;
+	std::vector<cv::KeyPoint> newkeypoints, lastkeypoints;
+
+	cv::Mat newdescriptors, lastdescriptors;
+
+	cv::Ptr<cv::ORB> orb = cv::ORB::create();
+
+	orb->detect(lastFrame, lastkeypoints);
+	orb->detect(newFrame, newkeypoints);
+
+	orb->compute(lastFrame, lastkeypoints, lastdescriptors);
+	orb->compute(newFrame, newkeypoints, newdescriptors);
+
+
+	
+
+	//matcher.match(lastdescriptors, newdescriptors, matches);
+
+	//double min_dist = 0, max_dist = 0;//∂®“Âæ‡¿Î
+
+	//for (int i = 0; i < lastdescriptors.cols; ++i)//±È¿˙
+	//{
+	//	double dist = matches[i].distance;
+	//	if (dist < min_dist) min_dist = dist;
+	//	if (dist > max_dist) max_dist = dist;
+
+	//}
+	//std::vector<cv::DMatch> good_matches;
+
+	//for (int j = 0; j < lastdescriptors.cols; ++j)
+	//{
+	//	if (matches[j].distance <= max(2 * min_dist, 30.0))
+	//		good_matches.push_back(matches[j]);
+	//}
+
+	cv::BFMatcher matcher(cv::NORM_HAMMING);
+	vector<vector<cv::DMatch>> getmatches;
+
+	cv::DMatch bestMatch, betterMatch;
+
+	vector<cv::DMatch>bestMatches;
+
+	matcher.knnMatch(lastdescriptors,newdescriptors, getmatches, 2);
+
+	int n = 0;	cv::Point p1, p2;	
+	for (int i = 0; i < (int)getmatches.size(); i++)
+	{ 
+		bestMatch = getmatches[i][0];
+		betterMatch = getmatches[i][1];
+		p1 = lastkeypoints[bestMatch.trainIdx].pt;
+		p2 = newkeypoints[bestMatch.queryIdx].pt;
+		double distance = sqrt((p1.x - p2.x)*(p1.x - p2.x) + (p1.y - p2.y)*(p1.y - p2.y));	
+
+		float distanceRatio = bestMatch.distance / betterMatch.distance;  	
+
+		if (distanceRatio < 0.8 && distance < 30) 
+		{	
+			bestMatches.push_back(bestMatch); 						
+		}
+	}
+	
+	double distance=0;
+
+	for (size_t i = 0; i < bestMatches.size(); i++)
+	{
+		distance += bestMatches[i].distance;
+	}
+
+	if (distance/bestMatches.size() >20)
+	{
+		acept = false;
+	}
+	lastFrame = newFrame;
+
+	return acept;
+
 }
 
 void RobotLocator::preProcess(void)
 {
-
-
 
 	//-- Pass through filter
 
@@ -129,7 +212,7 @@ void RobotLocator::preProcess(void)
 
 	pass.setInputCloud(filteredCloud);
 	pass.setFilterFieldName("z");
-	pass.setFilterLimits(0.0f, 4.0f);
+	pass.setFilterLimits(0.0f, 2.5f);
 	pass.filter(*filteredCloud);
 
 
@@ -141,13 +224,27 @@ void RobotLocator::preProcess(void)
 	passVG.setLeafSize(0.02f, 0.02f, 0.02f);
 	passVG.filter(*filteredCloud);
 
+	//-- Get ground pcl
 
+	pass.setInputCloud(filteredCloud);
+	pass.setFilterFieldName("x");
+	pass.setFilterLimits(-0.5f, 0.5f);
+	pass.filter(*forgroundcloud);
+
+	pass.setInputCloud(forgroundcloud);
+	pass.setFilterFieldName("z");
+	pass.setFilterLimits(0.0f, 1.0f);
+	pass.filter(*forgroundcloud);
+
+	passVG.setInputCloud(forgroundcloud);
+	passVG.setLeafSize(0.02f, 0.02f, 0.02f);
+	passVG.filter(*forgroundcloud);
 
 	//-- Remove outliers
 	//start = chrono::steady_clock::now();
 	pcl::StatisticalOutlierRemoval<pointType> passSOR;
 	passSOR.setInputCloud(filteredCloud);
-	passSOR.setMeanK(10);
+	passSOR.setMeanK(20);
 	passSOR.setStddevMulThresh(0.1);
 	passSOR.filter(*filteredCloud);
 
@@ -158,6 +255,9 @@ void RobotLocator::preProcess(void)
 
 pcl::ModelCoefficients::Ptr RobotLocator::extractGroundCoeff(pPointCloud cloud)
 {
+	dstCloud->clear();
+	groundcloud->clear();
+	pointType tmpPoint;
 	//-- Plane model segmentation
 	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
@@ -185,33 +285,63 @@ pcl::ModelCoefficients::Ptr RobotLocator::extractGroundCoeff(pPointCloud cloud)
 		groundCoeff = coefficients;
 	}
 
+	for (size_t i = 0; i < inliers->indices.size(); ++i)
+	{
+		tmpPoint = cloud->points[inliers->indices[i]];
+		tmpPoint.r = 255;
+		tmpPoint.g = 255;
+		tmpPoint.b = 0;
+		groundcloud->points.push_back(tmpPoint);
+	}
+	groundpointnumber = inliers->indices.size();
+
 	return groundCoeff;
 }
 
 pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 {
+	Eigen::Vector3f vecNormal(groundCoeff->values[0], groundCoeff->values[1], groundCoeff->values[2]);
 	//-- Define the rotate angle about x-axis
-	double angleAlpha = atan(-groundCoeff->values[2] / groundCoeff->values[1]);
+	//double angleAlpha = atan(-groundCoeff->values[2] / groundCoeff->values[1]);
+	double angle = acos(-groundCoeff->values[1] * groundCoeff->values[3] / (vecNormal.norm() * fabs(groundCoeff->values[3])));
+	//cout << "angle: " << angle * 180 / CV_PI;
+	Eigen::Vector3f Axis = (-groundCoeff->values[3] / fabs(groundCoeff->values[3])) * vecNormal.cross(Eigen::Vector3f(0, -1, 0));
+	Axis.normalize();
 
 	//-- Define the rotate transform
 	Eigen::Affine3f rotateToXZPlane = Eigen::Affine3f::Identity();
-	rotateToXZPlane.rotate(Eigen::AngleAxisf(angleAlpha, Eigen::Vector3f::UnitX()));
+	//rotateToXZPlane.rotate(Eigen::AngleAxisf(angleAlpha, Eigen::Vector3f::UnitX()));
+	rotateToXZPlane.rotate(Eigen::AngleAxisf(angle, -Axis));
 
 	//-- Apply transform
 	pcl::transformPointCloud(*cloud, *cloud, rotateToXZPlane);
 
+	//-- Define the rote angle about y-axis
+
+	angle = -25.0f/180.0f*PI;
+
+	Eigen::Affine3f roteY= Eigen::Affine3f::Identity();
+
+	roteY.rotate(Eigen::AngleAxisf(angle, Eigen::Vector3f::UnitY()));
+	Eigen::Affine3f rotated = roteY * rotateToXZPlane;
+
+	//-- Apply transform
+	pcl::transformPointCloud(*cloud, *cloud, roteY); 
+
+
 	//-- Update rotated ground coefficients
-	Vector3d vecNormal(groundCoeff->values[0], groundCoeff->values[1], groundCoeff->values[2]);
+	Eigen::Vector3f groundCoeffRotatedVec = rotateToXZPlane * vecNormal;
 
-	groundCoeffRotated->values[0] = groundCoeff->values[0];
-	groundCoeffRotated->values[1] = -vecNormal.norm() * (groundCoeff->values[3] / abs(groundCoeff->values[3]));
-	groundCoeffRotated->values[2] = 0.0f;
-	groundCoeffRotated->values[3] = groundCoeff->values[3];
+	groundCoeffRotated->values[0] = groundCoeffRotatedVec[0];
+	groundCoeffRotated->values[1] = groundCoeffRotatedVec[1];
+	groundCoeffRotated->values[2] = groundCoeffRotatedVec[2];
+	groundCoeffRotated->values[3] = fabs(groundCoeff->values[3]) / vecNormal.norm();
 
-	// cout << "Ground coefficients: " << groundCoeffRotated->values[0] << " " 
-	//                                 << groundCoeffRotated->values[1] << " "
-	//                                 << groundCoeffRotated->values[2] << " " 
-	//                                 << groundCoeffRotated->values[3] << endl;
+
+	cout << "Ground coefficients: " << groundCoeffRotated->values[0] << " "
+		<< groundCoeffRotated->values[1] << " "
+		<< groundCoeffRotated->values[2] << " "
+		<< groundCoeffRotated->values[3];
 
 	return cloud;
 }
@@ -219,12 +349,14 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 pPointCloud RobotLocator::removeHorizontalPlane(pPointCloud cloud, bool onlyGround)
 {
 	verticalCloud->clear();
-	dstCloud->clear();
+	outgroundcloud->clear();
+
 	pointType tmpPoint;
 
 	//-- Vector of plane normal and every point on the plane
 	Vector3d vecNormal(groundCoeffRotated->values[0], groundCoeffRotated->values[1], groundCoeffRotated->values[2]);
 	Vector3d vecPoint(0, 0, 0);
+	Vector3d vecPointall(0, 0, 0);
 
 	// cout << "Ground coefficients: " << groundCoeffRotated->values[0] << " " 
 	//                                 << groundCoeffRotated->values[1] << " "
@@ -236,6 +368,7 @@ pPointCloud RobotLocator::removeHorizontalPlane(pPointCloud cloud, bool onlyGrou
 	ne.setInputCloud(cloud);
 
 	pcl::search::KdTree<pointType>::Ptr tree(new pcl::search::KdTree<pointType>());
+	//pcl::search::Octree<pointType>::Ptr tree(new pcl::search::Octree<pointType>());
 	ne.setSearchMethod(tree);
 
 	pcl::PointCloud<pcl::Normal>::Ptr normal(new pcl::PointCloud<pcl::Normal>);
@@ -267,13 +400,30 @@ pPointCloud RobotLocator::removeHorizontalPlane(pPointCloud cloud, bool onlyGrou
 				groundCoeffRotated->values[2] * cloud->points[i].z +
 				groundCoeffRotated->values[3]) / vecNormal.norm();
 
-			if (angleCosine < 0.90 || distanceToPlane > 0.05)
+			if (angleCosine < 0.80 || distanceToPlane > 0.05)
 			{
 				verticalCloud->points.push_back(cloud->points[i]);
+			}
+			else if (angleCosine > 0.80 && distanceToPlane > 0.05)
+			{
+				outgroundcloud->points.push_back(cloud->points[i]);
 			}
 		}
 	}
 
+	if (outgroundcloud->points.size() > groundpointnumber)
+	{
+		for (size_t i = 0; i < outgroundcloud->points.size(); i++)
+		{
+			vecPointall[0] += normal->points[i].normal_x;
+			vecPointall[1] += normal->points[i].normal_y;
+			vecPointall[2] += normal->points[i].normal_z;
+
+		}
+		groundCoeffRotated->values[0] = vecPointall[0] / outgroundcloud->points.size();
+		groundCoeffRotated->values[1] = vecPointall[1] / outgroundcloud->points.size();
+		groundCoeffRotated->values[2] = vecPointall[2] / outgroundcloud->points.size();
+	}
 
 	//-- Remove Outliers
 
@@ -300,7 +450,7 @@ pPointCloud RobotLocator::removeHorizontalPlane(pPointCloud cloud, bool onlyGrou
 
 pPointCloud RobotLocator::extractVerticalCloud(pPointCloud cloud)
 {
-	extractGroundCoeff(cloud);
+	extractGroundCoeff(forgroundcloud);
 
 	//-- Rotate the point cloud to horizontal
 	rotatePointCloudToHorizontal(cloud);
@@ -375,7 +525,7 @@ void RobotLocator::extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi,
 			coefficients->values[2] * cloud->points[indicesROI->indices[i]].z +
 			coefficients->values[3]) / vecNormal.norm();
 
-		if (angleCosine > 0.80 && distanceToPlane < 0.10)
+		if (angleCosine > 0.90 && distanceToPlane < 0.05)
 		{
 			indices->indices.push_back(indicesROI->indices[i]);
 		}
@@ -419,14 +569,14 @@ void RobotLocator::locateBeforeDuneStage1(void)
 
 	//start = chrono::steady_clock::now();
 	extractPlaneWithinROI(verticalCloud, leftFenseROI, inliers, coefficients);
-	leftFenseROI = updateObjectROI(verticalCloud, inliers, 0.1, 0.1, 0.3, 0.3);
+	leftFenseROI = updateObjectROI(verticalCloud, inliers, 0.7, 0.7, 0.5, 0.5);
 
 	Vector3d normalleft(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
 
 	Vector3d vecNormal = Vector3d(groundCoeffRotated->values[0], groundCoeffRotated->values[1], groundCoeffRotated->values[2]);
 	double cameraHeight = abs(groundCoeffRotated->values[3]) / vecNormal.norm();
 
-	double xDistance = (coefficients->values[1] * (cameraHeight - 0.05) + coefficients->values[3]) / coefficients->values[0];
+	double xDistance = abs(coefficients->values[1] * (cameraHeight - 0.05) + coefficients->values[3]) / vecNormal.norm();
 
 	Vector2d normalleft2d(coefficients->values[0], coefficients->values[2]);
 	Vector2d vecXAxis(1, 0);
@@ -458,47 +608,48 @@ void RobotLocator::locateBeforeDuneStage1(void)
 	duneROI.zMin = leftFenseROI.zMin + 0.3;
 	duneROI.zMax = leftFenseROI.zMax + 0.9;
 
-	//-- Get point cloud indices inside given ROI
-	//start = chrono::steady_clock::now();
-	pcl::PassThrough<pointType> pass;
-	pass.setInputCloud(verticalCloud);
-	pass.setFilterFieldName("x");
-	pass.setFilterLimits(duneROI.xMin, duneROI.xMax);
-	pass.filter(inliers->indices);
-
-	pass.setInputCloud(verticalCloud);
-	pass.setFilterFieldName("z");
-	pass.setFilterLimits(duneROI.zMin, duneROI.zMax);
-	pass.setIndices(inliers);
-	pass.filter(inliers->indices);
-
-	//stop = chrono::steady_clock::now();
-	//totalTime1 = chrono::duration_cast<chrono::microseconds>(stop - start);
-
-	// -- Change the color of the extracted part for debuging
-	// start = chrono::steady_clock::now();
-	for (int i = 0; i < inliers->indices.size(); i++)
-	{
-		dstCloud->points[inliers->indices[i]].r = 251;
-		dstCloud->points[inliers->indices[i]].g = 188;
-		dstCloud->points[inliers->indices[i]].b = 5;
-	}
-
 	Eigen::Vector4f minVector, maxVector;
 	pcl::getMinMax3D(*verticalCloud, *inliers, minVector, maxVector);
+	//-- Get point cloud indices inside given ROI
+	//start = chrono::steady_clock::now();
+	//pcl::PassThrough<pointType> pass;
+	//pass.setInputCloud(verticalCloud);
+	//pass.setFilterFieldName("x");
+	//pass.setFilterLimits(duneROI.xMin, duneROI.xMax);
+	//pass.filter(inliers->indices);
+
+	//pass.setInputCloud(verticalCloud);
+	//pass.setFilterFieldName("z");
+	//pass.setFilterLimits(duneROI.zMin, duneROI.zMax);
+	//pass.setIndices(inliers);
+	//pass.filter(inliers->indices);
+
+	////stop = chrono::steady_clock::now();
+	////totalTime1 = chrono::duration_cast<chrono::microseconds>(stop - start);
+
+	//// -- Change the color of the extracted part for debuging
+	//// start = chrono::steady_clock::now();
+	//for (int i = 0; i < inliers->indices.size(); i++)
+	//{
+	//	dstCloud->points[inliers->indices[i]].r = 251;
+	//	dstCloud->points[inliers->indices[i]].g = 188;
+	//	dstCloud->points[inliers->indices[i]].b = 5;
+	//}
+
+
 
 	// stop = chrono::steady_clock::now();
-	//totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
 
-	if (minVector[2] < 1.80f) { nextStatusCounter++; }
+
+	if (maxVector[2] < 1.80f) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
 	if (nextStatusCounter >= 3) { status++; }
-
-	cout << minVector[2] << " " << xDistance << " " << plus_minus * acos(angleCosine) / PI * 180 << endl;
-
 	diatancemeasurement = xDistance;
 
+	cout << maxVector[2] << " " << xDistance << " " << plus_minus * acos(angleCosine) / PI * 180 << endl;
+
+	dstViewer->updatePointCloud(groundcloud, "ground Cloud");
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 
@@ -543,9 +694,6 @@ void RobotLocator::locateBeforeDuneStage2(void)
 		pass.setIndices(inliers);
 		pass.filter(inliers->indices);
 
-
-
-
 		pass.setInputCloud(verticalCloud);
 		pass.setFilterFieldName("z");
 		pass.setFilterLimits(leftFenseROI.zMin, leftFenseROI.zMax);
@@ -563,13 +711,12 @@ void RobotLocator::locateBeforeDuneStage2(void)
 		seg.setDistanceThreshold(0.01);
 		seg.setIndices(inliers);
 
-
 		seg.setInputCloud(verticalCloud);
 		seg.segment(*inliers, *coefficients);
 
 	}
 
-	leftFenseROI = updateObjectROI(verticalCloud, inliers, 0.1, 0.1, 0.3, 0.3);
+	leftFenseROI = updateObjectROI(verticalCloud, inliers, 0.7, 0.7, 0.5, 0.5);
 
 	//-- Calculate the angle to x-axis
 	Vector2d vecNormaleft(coefficients->values[0], coefficients->values[2]);
@@ -584,7 +731,7 @@ void RobotLocator::locateBeforeDuneStage2(void)
 	double cameraHeight = abs(groundCoeffRotated->values[3]) / vecNormal.norm();
 
 	//-- The formula of dune is ax + by + cz + d = 0, which z = 0.0 and y = cameraHeight - 0.05
-	double xDistance = (coefficients->values[1] * (cameraHeight - 0.05) + coefficients->values[3]) / coefficients->values[0];
+	double xDistance = abs(coefficients->values[1] * (cameraHeight - 0.05) + coefficients->values[3]) / vecNormal.norm();
 
 	// cout << "xMin_  " << leftFenseROI.xMin << "  xMax_  " << leftFenseROI.xMax << 
 	//         "  zMin_  " << leftFenseROI.zMin << "  zMax_  " << leftFenseROI.zMax << endl;
@@ -613,21 +760,28 @@ void RobotLocator::locateBeforeDuneStage2(void)
 	}
 
 
-
+	vecNormal = Vector3d(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
 	//-- The formula of dune is ax + by + cz + d = 0, which x = 0.0 and y = cameraHeight - 0.05
 	double zDistance = -(coefficients->values[1] * (cameraHeight - 0.05) + coefficients->values[3]) / coefficients->values[2];
 
-	double duneDistance = (coefficients->values[1] * (cameraHeight - 0.05) + coefficients->values[3]) / vecNormal.norm();
+	double duneDistance = abs(coefficients->values[1] * (cameraHeight - 0.05) + coefficients->values[3]) / vecNormal.norm();
 
 	if (zDistance < 1.40f) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
 	if (nextStatusCounter >= 3) { status++; }
 
-	diatancemeasurement = xDistance;
+	diatancemeasurement = duneDistance;
+	anglemeasurement = plus_minus * acos(angleCosine) / PI * 180;
+	//totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
+	cout << " dune coefficients: " << coefficients->values[0] << " "
+		<< coefficients->values[1] << " "
+		<< coefficients->values[2] << " "
+		<< coefficients->values[3];
 
-	cout << "duneDistance  " << duneDistance << "Z distance  " << zDistance << " " << "leftX distance  " << xDistance << " " << "angle  " << plus_minus * acos(angleCosine) / PI * 180 << endl;
-
+	cout << " " << cameraHeight << endl;
+	//cout << "duneDistance  " << duneDistance << "Z distance  " << zDistance << " " << "leftX distance  " << xDistance << " " << "angle  " << plus_minus * acos(angleCosine) / PI * 180 << endl;
+	dstViewer->updatePointCloud(groundcloud, "ground Cloud");
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 	//cout <<"Z distance  " << zDistance<<" "<<angleCosine<<" "<< double(totalTime.count()) / 1000.0f <<" "<<  double(totalTime1.count()) / 1000.0f <<" " <<double(totalTime2.count()) / 1000.0f <<" "<<double(totalTime3.count()) / 1000.0f<<" "<<double(totalTime4.count()) / 1000.0f 
@@ -642,8 +796,14 @@ void RobotLocator::locateBeforeDuneStage3(void)
 	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
 	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 
+	if (filteredCloud->points.size() == 0)
+	{
+		cout << "'error";
+		
+	}
+
 	extractPlaneWithinROI(verticalCloud, duneROI, inliers, coefficients);
-	duneROI = updateObjectROI(verticalCloud, inliers, 0.1, 0.1, 0.3, 0.3);
+	duneROI = updateObjectROI(verticalCloud, inliers, 0.7, 0.7, 0.5, 0.5);
 
 	//-- Change the color of the extracted part for debuging
 	for (int i = 0; i < inliers->indices.size(); i++)
@@ -659,7 +819,7 @@ void RobotLocator::locateBeforeDuneStage3(void)
 
 	//-- The formula of dune is ax + by + cz + d = 0, which y = cameraHeight - 0.05
 	vecNormal = Vector3d(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
-	double duneDistance = (coefficients->values[1] * (cameraHeight - 0.05) + coefficients->values[3]) / vecNormal.norm();
+	double duneDistance = abs(coefficients->values[1] * (cameraHeight - 0.05) + coefficients->values[3]) / vecNormal.norm();
 
 	Vector2d normalleft2d(coefficients->values[0], coefficients->values[2]);
 	Vector2d vecXAxis(1, 0);
@@ -667,6 +827,7 @@ void RobotLocator::locateBeforeDuneStage3(void)
 	double angleCosine = abs(normalleft2d.dot(vecXAxis) / (normalleft2d.norm()*vecXAxis.norm()));
 
 	int plus_minus;
+
 	if (coefficients->values[0] * coefficients->values[2] > 0)
 		plus_minus = -1;
 	else plus_minus = 1;
@@ -674,9 +835,16 @@ void RobotLocator::locateBeforeDuneStage3(void)
 	// else { nextStatusCounter = 0; }
 
 	// if (nextStatusCounter >= 3) { status++; }
+	diatancemeasurement = duneDistance;                                                                                                                                                                                                                                                                                                                              
+	anglemeasurement = plus_minus * acos(angleCosine) / PI * 180 - 45;
+	//cout << "Dune distance  " << duneDistance << " z_anxis " << plus_minus * acos(angleCosine) / PI * 180 - 45 <<  endl;
 
-	cout << "Dune distance  " << duneDistance << " z_anxis " << plus_minus * acos(angleCosine) / PI * 180 - 45 <<  endl;
-
+	cout << " dune coefficients: " << coefficients->values[0] << " "
+		<< coefficients->values[1] << " "
+		<< coefficients->values[2] << " "
+		<< coefficients->values[3];
+	cout << " " << cameraHeight << endl;
+	dstViewer->updatePointCloud(groundcloud, "ground Cloud");
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 }
@@ -723,7 +891,7 @@ void RobotLocator::locatePassingDune(void)
 		}
 	}
 
-	frontFenseROI = updateObjectROI(verticalCloud, largestIndice, 0.3, 0.0, 0.1, 0.1);
+	frontFenseROI = updateObjectROI(verticalCloud, largestIndice, 0.7, 0.0, 0.2, 0.2);
 
 	//-- Change the color of the extracted part for debuging
 	//for (int i = 0; i < largestIndice->indices.size(); i++)
@@ -737,7 +905,7 @@ void RobotLocator::locatePassingDune(void)
 	pcl::getMinMax3D(*verticalCloud, *largestIndice, minVector, maxVector);
 
 	//-- Calculate the vertical distance to front fense
-	double fenseDistance = minVector[2];
+	double fenseDistance = maxVector[2];
 
 	// // if (fenseDistance < 0.5f) { nextStatusCounter++; }
 	// // else { nextStatusCounter = 0; }
@@ -746,6 +914,7 @@ void RobotLocator::locatePassingDune(void)
 
 	cout << "front fense distance  " << fenseDistance << endl;
 
+	dstViewer->updatePointCloud(groundcloud, "Destination Cloud");
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 }
