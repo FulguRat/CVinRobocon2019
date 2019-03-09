@@ -74,6 +74,8 @@ pPointCloud ActD435::update(void)
 	//-- Wait for the next set of frames from the camera
 	frameSet = pipe.wait_for_frames();
 
+	chrono::steady_clock::time_point start;
+
 	chrono::steady_clock::time_point stop = chrono::steady_clock::now();
 	auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
 	// cout << "retrieve time:" << double(totalTime.count()) / 1000.0f << "\t processing time:";
