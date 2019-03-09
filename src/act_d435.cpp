@@ -38,20 +38,23 @@ void ActD435::init(void)
 	//sensor sen;
 	//sen.set_option(RS2_OPTION_EXPOSURE, 25);
 
+	cout << "step1 ok" << endl;
 	//-- Add desired streams to configuration
 	cfg.enable_stream(RS2_STREAM_DEPTH, 640, 480, RS2_FORMAT_Z16, 30);
 	//cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
-	cfg.enable_stream(RS2_STREAM_COLOR, 848, 480, RS2_FORMAT_BGR8, 30);
+	cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
+	cout << "step2 ok" << endl;
 	//cfg.enable_device_from_file("1.bag");
 	//-- Instruct pipeline to start streaming with the requested configuration
 	pipe.start(cfg);
-
+	cout << "step3 ok" << endl;
 	//-- Wait for frames from the camera to settle
 	for (int i = 0; i < 5; i++)
 	{
 		//Drop several frames for auto-exposure
 		frameSet = pipe.wait_for_frames();
 	}
+	cout << "step4 ok" << endl;
 }
 
 pPointCloud ActD435::update(void)
@@ -78,11 +81,11 @@ pPointCloud ActD435::update(void)
 	rs2::video_frame colorFrame = frameSet.get_color_frame();
 	rs2::depth_frame alignedDepthFrame = frameSet.get_depth_frame();
 	
-	//srcImage = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)colorFrame.get_data(), cv::Mat::AUTO_STEP);
+	srcImage = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)colorFrame.get_data(), cv::Mat::AUTO_STEP);
 
-	cv::Mat temp = cv::Mat(cv::Size(848, 480), CV_8UC3, (void*)colorFrame.get_data(), cv::Mat::AUTO_STEP);
+	//cv::Mat temp = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)colorFrame.get_data(), cv::Mat::AUTO_STEP);
 
-	switch (colorFrameRoi)
+	/*switch (colorFrameRoi)
 	{
 		case midRoi:
 		{
@@ -113,7 +116,7 @@ pPointCloud ActD435::update(void)
 		break;
 		default:
 			break;
-	}
+	}*/
 #ifdef DEBUG
 	imshow("src", srcImage);
 	cvWaitKey(1);
@@ -1310,7 +1313,7 @@ void ActD435::FindLineCrossCenter(float angleThresh, float minDistThresh, float 
 #endif // DEBUG
 }
 
-cv::Point3f ActD435::GetIrCorrdinate(cv::Point2f& pt)
+cv::Point3f ActD435::GetIrCorrdinate(cv::Point2f pt)
 {
 	double a = groundCoeff[0];
 	double b = groundCoeff[1];
@@ -1385,7 +1388,7 @@ float ActD435::GetDepth(cv::Point2f& pt,cv::Point3f& pt1)
 	return realDistance;
 }
 
-float ActD435::GetyawAngle(cv::Point2f& pt1, cv::Point2f& pt2, int fenseType)
+float ActD435::GetyawAngle(const cv::Point2f& pt1,const cv::Point2f& pt2, int fenseType)
 {
 	cv::Point3f point1In3D;
 	cv::Point3f point2In3D;

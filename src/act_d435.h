@@ -130,13 +130,13 @@ public:
 	cv::Point GetCrossPoint(cv::Point pt1, cv::Point pt2, cv::Point pt3, cv::Point pt4);
 	cv::Point SetSeedPoint(void);
 	int ClimbingMountainStageJudge(void);
-	bool ActD435::MatchLine(vector<cv::Vec4i>& src, vector<cv::Vec4i>& dst, float angleThresh, float minDistThresh, float maxDistThresh);
+	bool MatchLine(vector<cv::Vec4i>& src, vector<cv::Vec4i>& dst, float angleThresh, float minDistThresh, float maxDistThresh);
 	void FindHoughLineCross(void);
-	void ActD435::FindLineCrossCenter(float angleThresh, float minDistThresh, float maxDistThresh);
+	void FindLineCrossCenter(float angleThresh, float minDistThresh, float maxDistThresh);
 	void FindHorizonalHoughLine(cv::Mat& src);
 	float GetDepth(cv::Point2f& pt, cv::Point3f& pt1);
-	float GetyawAngle(cv::Point2f& pt1, cv::Point2f& pt2, int fenseType);
-	cv::Point3f GetIrCorrdinate(cv::Point2f& pt);
+	float GetyawAngle(const cv::Point2f& pt1, const cv::Point2f& pt2, int fenseType);
+	cv::Point3f GetIrCorrdinate(cv::Point2f pt);
 
 private:
 	//-- For color-aligned point cloud
