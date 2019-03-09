@@ -57,23 +57,24 @@ public:
 
 	void init(ActD435& d435);
 
-	pPointCloud updateCloud(void);
+	mb_cuda::thrustCloud updateCloud(void);
 
 	void preProcess(void);
 
 	void extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi,
 		pcl::PointIndices::Ptr indices, pcl::ModelCoefficients::Ptr coefficients);
 
-	pcl::ModelCoefficients::Ptr extractGroundCoeff(pPointCloud cloud);
+	bool extractGroundCoeff(pPointCloud cloud);
 
 	pPointCloud rotatePointCloudToHorizontal(pPointCloud cloud);
-	pPointCloud rotateMountainPointCloudToHorizontal(pPointCloud cloud);
 	pPointCloud removeHorizontalPlane(pPointCloud cloud, bool onlyGround = false);
 
 	pPointCloud extractVerticalCloud(pPointCloud cloud);
 
 	ObjectROI updateObjectROI(pPointCloud cloud, pcl::PointIndices::Ptr indices,
-		double xMinus, double xPlus, double zMinus, double zPlus);
+		double xMinus, double xPlus, double zMinus, double zPlus, bool ifx, bool ifz, ObjectROI beforeobjROI);
+
+	double calculateDistance(pcl::ModelCoefficients::Ptr groundcoefficients, pcl::ModelCoefficients::Ptr planecoefficients);
 
 	void locateBeforeDuneStage1(void);
 	void locateBeforeDuneStage2(void);
@@ -97,6 +98,7 @@ public:
     unsigned int status;
     unsigned int nextStatusCounter;
 	unsigned int roiChangeCounter;
+	double diatancemeasurement;
 	
 private:
 	ActD435*        thisD435;
@@ -106,15 +108,19 @@ private:
 	pPointCloud     filteredCloud;
 	pPointCloud     verticalCloud;
 	pPointCloud     dstCloud;
+	pPointCloud		groundCloud;
+	pPointCloud		forGroundCloud;
 
 	pcl::ModelCoefficients::Ptr groundCoeff;
 	pcl::ModelCoefficients::Ptr groundCoeffRotated;
 
     pcl::PointIndices::Ptr  indicesROI;
-    ObjectROI               leftFenseROI;
+	ObjectROI               leftFenseROImin;
+	ObjectROI               leftFenseROImax;
     ObjectROI               duneROI;
     ObjectROI               frontFenseROI;
 	ObjectROI				grasslandFenseROI;
+	ObjectROI				groundROI;
 
 	float besideFenseDist;
     float duneDist;
@@ -126,7 +132,12 @@ private:
 	float besidebarrierDist;
 	float frontbarrierDist;
 
+
 	float angle;
+
+	mb_cuda::thrustCloudT sourceThrust;
+
+	bool segmentStatus = true;
 
 	pcl::visualization::PCLVisualizer::Ptr dstViewer;
 };

@@ -26,8 +26,12 @@ set (GFLAGS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/inc/gflags)
 
 FILE(GLOB HEADER_LIST "${CMAKE_SOURCE_DIR}/src/*.h")
 FILE(GLOB SOURCE_LIST "${CMAKE_SOURCE_DIR}/src/*.cpp")
+FILE(GLOB IOHEADER_LIST "${CMAKE_SOURCE_DIR}/mb_cuda/io/*.h")
+FILE(GLOB IOSOURCE_LIST "${CMAKE_SOURCE_DIR}/mb_cuda/io/*.cpp")
+FILE(GLOB FILTERS_LIST "${CMAKE_SOURCE_DIR}/mb_cuda/filters/*.h")
+FILE(GLOB COMMON_LIST "${CMAKE_SOURCE_DIR}/mb_cuda/common/*.h")
 
-add_executable(${PROJ_NAME} ${SOURCE_LIST} ${HEADER_LIST})
+add_executable(${PROJ_NAME} ${SOURCE_LIST} ${HEADER_LIST} ${IOHEADER_LIST} ${IOSOURCE_LIST} ${FILTERS_LIST} ${COMMON_LIST})
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJ_NAME})
 
 # OpenCV
@@ -80,6 +84,19 @@ IF(UNIX)
 	    ${GFLAGS_DIR}/include
 	    ${CMAKE_CURRENT_SOURCE_DIR}/inc/mindVisionApi/include
 	    )
+
+	CUDA_ADD_EXECUTABLE(${PROJECT_NAME}
+    grabber/kinect2grabber.cpp
+    mb_cuda/io/pcl_thrust.cpp
+    mb_cuda/io/host_device.cu
+    mb_cuda/filters/pass_through.cu
+    mb_cuda/filters/voxel_grid.cu
+    mb_cuda/filters/statistical_outlier_removal.cu
+#    mb_cuda/filters/filter.h
+#    mb_cuda/common/point_cloud.h
+#    mb_cuda/io/host_device.h
+#    mb_cuda/io/host_device.cu
+    )
 	#object lib
 	target_link_libraries(${PROJ_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/inc/tensorRT4/ARM64/lib/libnvcaffe_parser.so)
 	target_link_libraries(${PROJ_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/inc/tensorRT4/ARM64/lib/libnvinfer.so)

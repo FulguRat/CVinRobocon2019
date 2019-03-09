@@ -65,7 +65,7 @@ void ActD435::init(void)
 	}
 }
 
-pPointCloud ActD435::update(void)
+mb_cuda::thrustCloudT ActD435::update(void)
 {
 	static int time = 0;
 
@@ -73,13 +73,6 @@ pPointCloud ActD435::update(void)
 
 	//-- Wait for the next set of frames from the camera
 	frameSet = pipe.wait_for_frames();
-
-	chrono::steady_clock::time_point start;
-
-	chrono::steady_clock::time_point stop = chrono::steady_clock::now();
-	auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
-	// cout << "retrieve time:" << double(totalTime.count()) / 1000.0f << "\t processing time:";
-	start = chrono::steady_clock::now();
 
 	//-- Get processed aligned frame
 	//alignedFrameSet = align.process(frameSet);
@@ -138,13 +131,11 @@ pPointCloud ActD435::update(void)
 
 	//-- Generate the pointcloud and texture mappings
 	rs2Points = rs2Cloud.calculate(alignedDepthFrame);
-	cloudByRS2 = pointsToPointCloud(rs2Points);
+	thrustcloud = pointsToPointCloud(rs2Points);
 
-	stop = chrono::steady_clock::now();
-	totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
 	// cout << double(totalTime.count()) / 1000.0f << endl;
 
-	return cloudByRS2;
+	return thrustcloud;
 }
 void ActD435::imgProcess()
 {
@@ -1497,76 +1488,72 @@ std::tuple<uint8_t, uint8_t, uint8_t> ActD435::getColorTexture(rs2::video_frame 
 // object with depth and RGB data from a single
 // frame captured using the Realsense.
 //===================================================
-pPointCloud ActD435::pointsToPointCloud(const rs2::points& points, const rs2::video_frame& color)
-{
-	// Object Declaration (Point Cloud)
-	pPointCloud cloud(new pointCloud);
-
-	// Declare Tuple for RGB value Storage (<t0>, <t1>, <t2>)
-	std::tuple<uint8_t, uint8_t, uint8_t> RGB_Color;
-
-	//================================
-	// PCL Cloud Object Configuration
-	//================================
-	// Convert data captured from Realsense camera to Point Cloud
-	auto sp = points.get_profile().as<rs2::video_stream_profile>();
-
-	cloud->width = static_cast<uint32_t>(sp.width());
-	cloud->height = static_cast<uint32_t>(sp.height());
-	cloud->is_dense = false;
-	cloud->points.resize(points.size());
-
-	auto textureCoord = points.get_texture_coordinates();
-	auto Vertex = points.get_vertices();
-
-	// Iterating through all points and setting XYZ coordinates
-	// and RGB values
-	for (int i = 0; i < points.size(); i++)
-	{
-		//===================================
-		// Mapping Depth Coordinates
-		// - Depth data stored as XYZ values
-		//===================================
-		cloud->points[i].x = Vertex[i].x;
-		cloud->points[i].y = Vertex[i].y;
-		cloud->points[i].z = Vertex[i].z;
-
-		// Obtain color texture for specific point
-		RGB_Color = getColorTexture(color, textureCoord[i]);
-
-		// Mapping Color (BGR due to Camera Model)
-		//cloud->points[i].r = get<2>(RGB_Color); // Reference tuple<2>
-	   // cloud->points[i].g = get<1>(RGB_Color); // Reference tuple<1>
-		//cloud->points[i].b = get<0>(RGB_Color); // Reference tuple<0>
-
-	}
-
-	return cloud; // PCL RGB Point Cloud generated
-}
+//pPointCloud ActD435::pointsToPointCloud(const rs2::points& points, const rs2::video_frame& color)
+//{
+//	// Object Declaration (Point Cloud)
+//	pPointCloud cloud(new pointCloud);
+//
+//	// Declare Tuple for RGB value Storage (<t0>, <t1>, <t2>)
+//	std::tuple<uint8_t, uint8_t, uint8_t> RGB_Color;
+//
+//	//================================
+//	// PCL Cloud Object Configuration
+//	//================================
+//	// Convert data captured from Realsense camera to Point Cloud
+//	auto sp = points.get_profile().as<rs2::video_stream_profile>();
+//
+//	cloud->width = static_cast<uint32_t>(sp.width());
+//	cloud->height = static_cast<uint32_t>(sp.height());
+//	cloud->is_dense = false;
+//	cloud->points.resize(points.size());
+//
+//	auto textureCoord = points.get_texture_coordinates();
+//	auto Vertex = points.get_vertices();
+//
+//	// Iterating through all points and setting XYZ coordinates
+//	// and RGB values
+//	for (int i = 0; i < points.size(); i++)
+//	{
+//		//===================================
+//		// Mapping Depth Coordinates
+//		// - Depth data stored as XYZ values
+//		//===================================
+//		cloud->points[i].x = Vertex[i].x;
+//		cloud->points[i].y = Vertex[i].y;
+//		cloud->points[i].z = Vertex[i].z;
+//
+//		// Obtain color texture for specific point
+//		RGB_Color = getColorTexture(color, textureCoord[i]);
+//
+//		// Mapping Color (BGR due to Camera Model)
+//		//cloud->points[i].r = get<2>(RGB_Color); // Reference tuple<2>
+//	   // cloud->points[i].g = get<1>(RGB_Color); // Reference tuple<1>
+//		//cloud->points[i].b = get<0>(RGB_Color); // Reference tuple<0>
+//
+//	}
+//
+//	return cloud; // PCL RGB Point Cloud generated
+//}
 
 //===================================================
 // pointsToPointCloud
 // - For point cloud without color information
 //===================================================
-pPointCloud ActD435::pointsToPointCloud(const rs2::points& points)
+mb_cuda::thrustCloudT ActD435::pointsToPointCloud(const rs2::points& points)
 {
-	pPointCloud cloud(new pointCloud);
+	mb_cuda::thrustCloudT thrust_cloud;
+	thrust_cloud.resize(points.size());
 
-	auto sp = points.get_profile().as<rs2::video_stream_profile>();
-	cloud->width = sp.width();
-	cloud->height = sp.height();
-	cloud->is_dense = false;
-	cloud->points.resize(points.size());
 
 	auto ptr = points.get_vertices();
-
-	for (auto& p : cloud->points)
+	for (auto& p : thrust_cloud)
 	{
 		p.x = ptr->x;
 		p.y = ptr->y;
-		p.z = ptr->z;
+		p.z = ptr->z*1.02;
 		ptr++;
 	}
 
-	return cloud;
+
+	return thrust_cloud;
 }

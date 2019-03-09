@@ -11,6 +11,13 @@
 #include <opencv2/opencv.hpp>
 #include <Eigen/Dense>
 
+#include "mb_cuda/common/point_types.h"
+#include "mb_cuda/io/pcl_thrust.h"
+#include "mb_cuda/io/host_device.h"
+#include "mb_cuda/filters/pass_through.h"
+#include "mb_cuda/filters/voxel_grid.h"
+#include "mb_cuda/filters/statistical_outlier_removal.h"
+
 extern int mode;
 
 #define DEBUG
@@ -118,7 +125,7 @@ public:
 	~ActD435();
 
 	void init(void);
-	pPointCloud update(void);
+	mb_cuda::thrustCloudT update(void);
 	void imgProcess(void);
 	void FillHoles(cv::Mat& src);
 	//mode 0 ����������� 1 ����˳�����
@@ -138,13 +145,15 @@ public:
 	float GetyawAngle(const cv::Point2f& pt1, const cv::Point2f& pt2, int fenseType);
 	cv::Point3f GetIrCorrdinate(cv::Point2f pt);
 
+
+
 private:
 	//-- For color-aligned point cloud
 	std::tuple<uint8_t, uint8_t, uint8_t> getColorTexture(rs2::video_frame texture, rs2::texture_coordinate Texture_XY);
-	pPointCloud pointsToPointCloud(const rs2::points& points, const rs2::video_frame& color);
+	//pPointCloud pointsToPointCloud(const rs2::points& points, const rs2::video_frame& color);
 
 	//-- For point cloud without color
-	pPointCloud pointsToPointCloud(const rs2::points& points);
+	mb_cuda::thrustCloudT pointsToPointCloud(const rs2::points& points);
 
 public:
 	vector<cv::Vec4i> filterLine;
@@ -175,6 +184,8 @@ public:
 	int pillarStatus;
 	float pillarHeight;
 	unsigned int status = CLIMBING_MOUNTAIN;
+
+	mb_cuda::thrustCloudT	thrustcloud;
 
 private:
 

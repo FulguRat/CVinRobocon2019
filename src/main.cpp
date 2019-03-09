@@ -2,6 +2,7 @@
 #include <librealsense2/rs.hpp>
 #include "act_d435.h"
 #include "robot_locator.h"
+#include "kalman_filter.h"
 #include "main.h"
 
 
@@ -14,9 +15,13 @@ int main(int argc, char* argv[])
 	std::cout << "[INFO]" << "ActD435 init...\n";
 	ActD435			fajD435;
 	RobotLocator 	fajLocator;
+	kalman_filter   distancefilter;
+	double xdistance;
 	fajD435.init();
 	fajLocator.init(fajD435);
 	fajLocator.status = STARTUP_INITIAL;
+
+	distancefilter.initKalmanFilter(2, 1, (cv::Mat_<float>(2, 2) << 1, 0.3, 0, 1), (cv::Mat_<float>(1, 2) << 1, 0), 1e-5, 1e-2, 0.1);
 #ifdef __linux__
 	std::cout << "[INFO]" << "serial init...\n";
 	serial::Serial my_serial("/dev/ttyTHS2", 115200, serial::Timeout::simpleTimeout(2));
@@ -111,6 +116,7 @@ int main(int argc, char* argv[])
 			default:
 				break;
 		}
+		xdistance=distancefilter.predictAndCorrect(Mat_<float>(1, 1)<<fajLocator.diatancemeasurement).at<float>(0,0);
 	}
 
 	return EXIT_SUCCESS;
