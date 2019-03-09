@@ -3,6 +3,8 @@
 #ifndef ROBOT_LOCATOR_H_
 #define ROBOT_LOCATOR_H_
 
+//left is zero, right is one 
+
 #define STD_ROI {-0.6f, 0.6f, 0.0f, 2.5f}
 
 #include <pcl/point_types.h>
@@ -18,7 +20,10 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/features/normal_3d.h>
+#include <pcl/features/normal_3d_omp.h>
 #include <pcl/filters/random_sample.h>
+#include <pcl/filters/conditional_removal.h>
+#include <pcl/filters/radius_outlier_removal.h>
 #include <Eigen/Dense>
 #include <cmath>
 #include "act_d435.h"
@@ -28,74 +33,82 @@ using namespace Eigen;
 //-- ROI of an object
 typedef struct
 {
-    double xMin;
-    double xMax;
+	double xMin;
+	double xMax;
 
-    double zMin;
-    double zMax;
+	double zMin;
+	double zMax;
 
 } ObjectROI;
 
+typedef struct
+{
+	float x;
+	float y;
+}robotLoc;
 //-- Algorithm implementation for robot locating
 class RobotLocator
 {
 public:
-    RobotLocator();
+	RobotLocator();
 	RobotLocator(const RobotLocator&) = delete;
 	RobotLocator& operator=(const RobotLocator&) = delete;
 	~RobotLocator();
 
-    void init(ActD435& d435);
+	void init(ActD435& d435);
 
-    pPointCloud updateCloud(void);
+	pPointCloud updateCloud(void);
 
-    void preProcess(void);
+	void preProcess(void);
 
-    void extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi, 
-                                pcl::PointIndices::Ptr indices, pcl::ModelCoefficients::Ptr coefficients);
+	void extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi,
+		pcl::PointIndices::Ptr indices, pcl::ModelCoefficients::Ptr coefficients);
 
-    pcl::ModelCoefficients::Ptr extractGroundCoeff(pPointCloud cloud);
+	pcl::ModelCoefficients::Ptr extractGroundCoeff(pPointCloud cloud);
 
-    pPointCloud rotatePointCloudToHorizontal(pPointCloud cloud);
+	pPointCloud rotatePointCloudToHorizontal(pPointCloud cloud);
+	pPointCloud rotateMountainPointCloudToHorizontal(pPointCloud cloud);
+	pPointCloud removeHorizontalPlane(pPointCloud cloud, bool onlyGround = false);
 
-    pPointCloud removeHorizontalPlane(pPointCloud cloud, bool onlyGround = false);
+	pPointCloud extractVerticalCloud(pPointCloud cloud);
 
-    pPointCloud extractVerticalCloud(pPointCloud cloud);
+	ObjectROI updateObjectROI(pPointCloud cloud, pcl::PointIndices::Ptr indices,
+		double xMinus, double xPlus, double zMinus, double zPlus);
 
-    ObjectROI updateObjectROI(pPointCloud cloud, pcl::PointIndices::Ptr indices, 
-                                double xMinus, double xPlus, double zMinus, double zPlus);
+	void locateBeforeDuneStage1(void);
+	void locateBeforeDuneStage2(void);
+	void locateBeforeDuneStage3(void);
 
-    void locateBeforeDuneStage1(void);
-    void locateBeforeDuneStage2(void);
-    void locateBeforeDuneStage3(void);
-
-    void locatePassingDune(void);
+	void locatePassingDune(void);
 
     void locateBeforeGrasslandStage1(void);
-    void locateBeforeGrasslandStage2(void);
+	void locateBeforeGrasslandStage2(void);
 	void locatePassingGrasslandStage1(void);
 	void locatePassingGrasslandStage2(void);
+	void locateUnderMountain(void);
+	void locateClimbingMountain(void);
+	void locateReachingMountain(void);
+	bool isStoped(void);
 
-    bool isStoped(void);
-
-    inline pPointCloud getSrcCloud(void) { return srcCloud; }
-    inline pPointCloud getFilteredCloud(void) { return filteredCloud; }
+	inline pPointCloud getSrcCloud(void) { return srcCloud; }
+	inline pPointCloud getFilteredCloud(void) { return filteredCloud; }
 
 public:
     unsigned int status;
     unsigned int nextStatusCounter;
-	float lineSlope;
-
+	unsigned int roiChangeCounter;
+	
 private:
-    ActD435*        thisD435;
-
-    pPointCloud		srcCloud;
+	ActD435*        thisD435;
+	robotLoc        robotLocNow;
+	robotLoc        robotLocLast;
+	pPointCloud		srcCloud;
 	pPointCloud     filteredCloud;
-    pPointCloud     verticalCloud;
+	pPointCloud     verticalCloud;
 	pPointCloud     dstCloud;
 
-    pcl::ModelCoefficients::Ptr groundCoeff;
-    pcl::ModelCoefficients::Ptr groundCoeffRotated;
+	pcl::ModelCoefficients::Ptr groundCoeff;
+	pcl::ModelCoefficients::Ptr groundCoeffRotated;
 
     pcl::PointIndices::Ptr  indicesROI;
     ObjectROI               leftFenseROI;
@@ -103,17 +116,19 @@ private:
     ObjectROI               frontFenseROI;
 	ObjectROI				grasslandFenseROI;
 
-    float leftFenseDist;
+	float besideFenseDist;
     float duneDist;
 	float frontFenseDist;
 	float firstRopeDist;
 	float secondRopeDist;
 	float grassFenseDist;
+	float peakDist;
+	float besidebarrierDist;
+	float frontbarrierDist;
 
 	float angle;
-	float fenseCornerX;
 
-    pcl::visualization::PCLVisualizer::Ptr dstViewer;
+	pcl::visualization::PCLVisualizer::Ptr dstViewer;
 };
 
 #endif

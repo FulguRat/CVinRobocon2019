@@ -306,3 +306,5 @@ CTestTestfile.cmake
 #------------------FileSystem---------------------
 build/
 bin/
+model/
+script/
