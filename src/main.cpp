@@ -47,8 +47,9 @@ int main(int argc, char* argv[])
     	MvInit mvCamera(mode);
 #endif
 	while (!fajLocator.isStoped())
-	{	
-		act_d435.status = fajLocator.status;
+	{
+		fajLocator.segmentStatus = true;
+		fajD435.status = fajLocator.status;
 
                 if(fajLocator.status != BONE_RECOGNITION)
 		{

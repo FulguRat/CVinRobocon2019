@@ -99,6 +99,7 @@ public:
     unsigned int nextStatusCounter;
 	unsigned int roiChangeCounter;
 	double diatancemeasurement;
+	bool segmentStatus = true;
 	
 private:
 	ActD435*        thisD435;
@@ -137,7 +138,6 @@ private:
 
 	mb_cuda::thrustCloudT sourceThrust;
 
-	bool segmentStatus = true;
 
 	pcl::visualization::PCLVisualizer::Ptr dstViewer;
 };
