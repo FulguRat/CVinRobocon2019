@@ -118,7 +118,8 @@ int main(int argc, char* argv[])
 			default:
 				break;
 		}
-		xdistance=distancefilter.predictAndCorrect(Mat_<float>(1, 1)<<fajLocator.diatancemeasurement).at<float>(0,0);
+		if(status <= 4)
+			xdistance=distancefilter.predictAndCorrect(Mat_<float>(1, 1)<<fajLocator.diatancemeasurement).at<float>(0,0);
 	}
 
 	return EXIT_SUCCESS;

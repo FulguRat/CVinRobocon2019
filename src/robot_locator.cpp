@@ -1,10 +1,10 @@
 #include "robot_locator.h"
+#include "getStatus.h"
 
 RobotLocator::RobotLocator() : srcCloud(new pointCloud),
 filteredCloud(new pointCloud),
 verticalCloud(new pointCloud),
 dstCloud(new pointCloud),
-groundCloud(new pointCloud),
 forGroundCloud(new pointCloud),
 indicesROI(new pcl::PointIndices),
 groundCoeff(new pcl::ModelCoefficients),
@@ -137,23 +137,28 @@ void RobotLocator::preProcess(void)
 	mb_cuda::host_to_device(sourceThrust, device_cloud);
 
 	thrust::device_vector<mb_cuda::PointXYZRGB> d_filtered_cloud;
-	if (!mode)
+	if(status <= 4)
 	{
-		if (status == PASSING_DUNE)
-			groundROI = { -1.5,-0.5,0.5,1.0 };
+		if (!mode)
+		{
+			/*if (status == PASSING_DUNE)
+				groundROI = { -1.5,-0.5,0.5,1.0 };
+			else*/
+			{
+				groundROI = { -0.5,0.5,0,1.0 };
+			}
+		}
 		else
 		{
-			groundROI = { -0.5,0.5,0,1.0 };
+			/*if (status == PASSING_DUNE)
+				groundROI = { 0.5,1.5,0.5,1.0 };
+			else
+			*/
+			{
+				groundROI = { -0.5,0.5,0,1.0 };
+			}
 		}
-	}
-	else
-	{
-		if (status == PASSING_DUNE)
-			groundROI = { 0.5,1.5,0.5,1.0 };
-		else
-		{
-			groundROI = { -0.5,0.5,0,1.0 };
-		}
+
 	}
 
 
@@ -191,33 +196,41 @@ void RobotLocator::preProcess(void)
 
 	//--To filteredCloud
 	thrust::host_vector<mb_cuda::PointXYZRGB> hostCloud;
-	mb_cuda::device_to_host(d_filtered_cloud, hostCloud);
-	mb_cuda::thrust_to_pcl(hostCloud, filteredCloud);
 
 	//for ground point
 	thrust::device_vector<mb_cuda::PointXYZRGB> forThrustGroundCloud;
 
-	mb_cuda::pass_through_filter(d_filtered_cloud, forThrustGroundCloud, 'z', groundROI.zMin, groundROI.zMax);
+	if(status <= 4)
+	{
+		mb_cuda::device_to_host(d_filtered_cloud, hostCloud);
+		mb_cuda::thrust_to_pcl(hostCloud, filteredCloud);
 
-	mb_cuda::pass_through_filter(forThrustGroundCloud, forThrustGroundCloud, 'x', groundROI.xMin, groundROI.xMax);
+		mb_cuda::pass_through_filter(d_filtered_cloud, forThrustGroundCloud, 'z', groundROI.zMin, groundROI.zMax);
 
-	mb_cuda::device_to_host(forThrustGroundCloud, hostCloud);
-	mb_cuda::thrust_to_pcl(hostCloud, forGroundCloud);
+		mb_cuda::pass_through_filter(forThrustGroundCloud, forThrustGroundCloud, 'x', groundROI.xMin, groundROI.xMax);
 
-	//-- Remove outliers
-	//start = chrono::steady_clock::now();
-	pcl::StatisticalOutlierRemoval<pointType> passSOR;
-	passSOR.setInputCloud(filteredCloud);
-	passSOR.setMeanK(10);
-	passSOR.setStddevMulThresh(0.1);
-	passSOR.filter(*filteredCloud);
-	// cout << double(totalTime.count()) / 1000.0f <<" "<<  double(totalTime1.count()) / 1000.0f <<" " <<double(totalTime2.count()) / 1000.0f <<" "<< endl;
+		mb_cuda::device_to_host(forThrustGroundCloud, hostCloud);
+		mb_cuda::thrust_to_pcl(hostCloud, forGroundCloud);
+		
+		//-- Remove outliers
+		//start = chrono::steady_clock::now();
+		pcl::StatisticalOutlierRemoval<pointType> passSOR;
+		passSOR.setInputCloud(filteredCloud);
+		passSOR.setMeanK(10);
+		passSOR.setStddevMulThresh(0.1);
+		passSOR.filter(*filteredCloud);
+		// cout << double(totalTime.count()) / 1000.0f <<" "<<  double(totalTime1.count()) / 1000.0f <<" " <<double(totalTime2.count()) / 1000.0f <<" "<< endl;
+	}
+	else
+	{
+		mb_cuda::device_to_host(d_filtered_cloud, hostCloud);
+		mb_cuda::thrust_to_pcl(hostCloud, forGroundCloud);
+	}
 }
 
 bool RobotLocator::extractGroundCoeff(pPointCloud cloud)
 {
 	dstCloud->clear();
-	groundCloud->clear();
 	//-- Plane model segmentation
 	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
@@ -258,6 +271,11 @@ bool RobotLocator::extractGroundCoeff(pPointCloud cloud)
 		thisD435->groundCoeff[1] = coefficients->values[1];
 		thisD435->groundCoeff[2] = coefficients->values[2];
 		thisD435->groundCoeff[3] = coefficients->values[3];
+		if(status == BEFORE_GRASSLAND_STAGE_1)
+		{
+			if(thisD435->groundCoeff[3] < 0.48)
+				thisD435->groundCoeff[3] += 0.1;
+		}
 	}
 	for (int i = 0; i < inliers->indices.size(); i++)
 	{
@@ -416,7 +434,7 @@ pPointCloud RobotLocator::removeHorizontalPlane(pPointCloud cloud, bool onlyGrou
 
 pPointCloud RobotLocator::extractVerticalCloud(pPointCloud cloud)
 {
-	extractGroundCoeff(cloud);
+	extractGroundCoeff(forGroundCloud);
 	if (segmentStatus)
 	{
 		return 0;
@@ -603,7 +621,7 @@ void RobotLocator::locateBeforeDuneStage1(void)
 
 	}
 	cout << " step1 date3 " << maxVector[2] << " " << xDistance << " " << endl;
-	dstViewer->updatePointCloud(groundCloud, "ground Cloud");
+	dstViewer->updatePointCloud(forGroundCloud, "ground Cloud");
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 	cout << " locateBeforeDuneStage1 2 " << double(totalTime.count()) / 1000.0f << " " << double(totalTime1.count()) / 1000.0f << " " << endl;
@@ -759,7 +777,7 @@ void RobotLocator::locateBeforeDuneStage2(void)
 	}
 
 	cout << "duneDistance  " << duneDistance << " " << "leftX distance  " << xDistance << endl;
-	dstViewer->updatePointCloud(groundCloud, "ground Cloud");
+	dstViewer->updatePointCloud(forGroundCloud, "ground Cloud");
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 #endif
@@ -801,10 +819,10 @@ void RobotLocator::locateBeforeDuneStage3(void)
 	double duneDistance = calculateDistance(groundCoeffRotated, coefficients);
 	diatancemeasurement = duneDistance;
 
-	if (duneDistance < 0.25f) { nextStatusCounter++; }
+	if (duneDistance < 0.3f) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
-	if (nextStatusCounter >= 3) { status++; }
+	if (nextStatusCounter >= 3) { status+=2; }
 
 
 #ifdef DEBUG
@@ -825,7 +843,7 @@ void RobotLocator::locateBeforeDuneStage3(void)
 	//		<< coefficients->values[3];
 	//	cout << " " << cameraHeight << endl;
 	cout << " locateBeforeDuneStage1 3 " << double(totalTime.count()) / 1000.0f << " " << endl;
-	dstViewer->updatePointCloud(groundCloud, "ground Cloud");
+	dstViewer->updatePointCloud(forGroundCloud, "ground Cloud");
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 #endif
@@ -929,7 +947,7 @@ void RobotLocator::locatePassingDune(void)
 
 	  cout << "front fense distance  " << fenseDistance << " second " << frountdDistance << endl;
 
-	  dstViewer->updatePointCloud(groundCloud, "ground Cloud");
+	  dstViewer->updatePointCloud(forGroundCloud, "ground Cloud");
 	  dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	  dstViewer->spinOnce(1);
 #endif
@@ -938,7 +956,7 @@ void RobotLocator::locatePassingDune(void)
 
 void RobotLocator::locateBeforeGrasslandStage1(void)
 {
-	extractGroundCoeff(filteredCloud);
+	extractGroundCoeff(forGroundCloud);
 	rotatePointCloudToHorizontal(filteredCloud);
 	thisD435->imgProcess();
 
@@ -951,16 +969,17 @@ void RobotLocator::locateBeforeGrasslandStage1(void)
 	else { nextStatusCounter = 0; }
 
 	if (nextStatusCounter >= 2) { status++; thisD435->status++;}
-	dstViewer->updatePointCloud(filteredCloud, "Destination Cloud");
-	dstViewer->spinOnce(1);
+	
 #ifdef DEBUG
+	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
+	dstViewer->spinOnce(1);
 	cout << "status: " << status << "\n" << endl;
 	cout << "front fense distance  " << frontFenseDist << "  besideFenseDist " << besideFenseDist << endl;
 #endif
 }
 void RobotLocator::locateBeforeGrasslandStage2(void)
 {
-	extractGroundCoeff(filteredCloud);
+	extractGroundCoeff(forGroundCloud);
 	rotatePointCloudToHorizontal(filteredCloud);
 	thisD435->imgProcess();
 
@@ -990,7 +1009,7 @@ void RobotLocator::locateBeforeGrasslandStage2(void)
 }
 void RobotLocator::locatePassingGrasslandStage1(void)
 {
-	extractGroundCoeff(filteredCloud);
+	extractGroundCoeff(forGroundCloud);
 	rotatePointCloudToHorizontal(filteredCloud);
 	thisD435->imgProcess();
 
@@ -1008,14 +1027,14 @@ void RobotLocator::locatePassingGrasslandStage1(void)
 #ifdef DEBUG
 	cout << "secondRopeDist: " << secondRopeDist << " besideFenseDist: " << besideFenseDist << endl;
 	cout << "status: " << status << "\n" << endl;
-	dstViewer->updatePointCloud(filteredCloud, "Destination Cloud");
+	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 #endif
 }
 
 void RobotLocator::locatePassingGrasslandStage2(void)
 {
-	extractGroundCoeff(filteredCloud);
+	extractGroundCoeff(forGroundCloud);
 	rotatePointCloudToHorizontal(filteredCloud);
 	thisD435->imgProcess();
 
@@ -1031,14 +1050,14 @@ void RobotLocator::locatePassingGrasslandStage2(void)
 #ifdef DEBUG
 	cout << "secondRopeDist: " << secondRopeDist << " besideFenseDist: " << besideFenseDist << endl;
 	cout << "status: " << status << "\n" << endl;
-	dstViewer->updatePointCloud(filteredCloud, "Destination Cloud");
+	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 #endif
 }
 
 void RobotLocator::locateUnderMountain(void)
 {
-	extractGroundCoeff(filteredCloud);
+	extractGroundCoeff(forGroundCloud);
 	rotatePointCloudToHorizontal(filteredCloud);
 	thisD435->imgProcess();
 
@@ -1057,14 +1076,14 @@ void RobotLocator::locateUnderMountain(void)
 #ifdef DEBUG
 	cout << "frontFenseDist: " << frontFenseDist << " besideFenseDist: " << besideFenseDist << endl;
 	cout << "status: " << status << "\n" << endl;
-	dstViewer->updatePointCloud(filteredCloud, "Destination Cloud");
+	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 #endif
 }
 
 void RobotLocator::locateClimbingMountain(void)
 {
-	extractGroundCoeff(filteredCloud);
+	extractGroundCoeff(forGroundCloud);
 	rotatePointCloudToHorizontal(filteredCloud);
 	
 	thisD435->imgProcess();
@@ -1096,7 +1115,7 @@ void RobotLocator::locateClimbingMountain(void)
 	if (nextStatusCounter >= 2) { status++; thisD435->status++; }
 
 #ifdef DEBUG
-	dstViewer->updatePointCloud(filteredCloud, "Destination Cloud");
+	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 	cout << "frontFenseDist:" << frontFenseDist << " peakDist:" << peakDist << endl;
 
@@ -1105,7 +1124,7 @@ void RobotLocator::locateClimbingMountain(void)
 }
 void RobotLocator::locateReachingMountain(void)
 {
-	extractGroundCoeff(filteredCloud);
+	extractGroundCoeff(forGroundCloud);
 	rotatePointCloudToHorizontal(filteredCloud);
 	thisD435->imgProcess();
 
@@ -1121,7 +1140,7 @@ void RobotLocator::locateReachingMountain(void)
 	if (nextStatusCounter >= 2) { status++; thisD435->status++; }
 #ifdef DEBUG
 	cout << "PeakDist: " << peakDist << endl;
-	dstViewer->updatePointCloud(filteredCloud, "Destination Cloud");
+	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 #endif // DEBUG
 }
