@@ -11,12 +11,25 @@ groundCoeff(new pcl::ModelCoefficients),
 groundCoeffRotated(new pcl::ModelCoefficients),
 dstViewer(new pcl::visualization::PCLVisualizer("Advanced Viewer"))
 {
-	leftFenseROImax = { -0.9/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
-	leftFenseROImin = { -0.9/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 1.0/*zMax*/ };
-	duneROI = { -0.7/*xMin*/,  0.1/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
-	// frontFenseROI = { -1.3/*xMin*/,  0.3/*xMax*/, 1.2/*zMin*/, 2.1/*zMax*/ };
-	frontFenseROI = { -0.7/*xMin*/,  0.1/*xMax*/, 0.0/*zMin*/, 1.7/*zMax*/ };
-	grasslandFenseROI = { -0.6/*xMin*/,  0.4/*xMax*/, 0.0/*zMin*/, 3.0/*zMax*/ };
+	if (!mode)
+	{
+		leftFenseROImax = { -0.9/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
+		leftFenseROImin = { -0.9/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 1.0/*zMax*/ };
+		duneROI = { -0.7/*xMin*/,  0.1/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
+		// frontFenseROI = { -1.3/*xMin*/,  0.3/*xMax*/, 1.2/*zMin*/, 2.1/*zMax*/ };
+		frontFenseROI = { -0.7/*xMin*/,  0.1/*xMax*/, 0.0/*zMin*/, 1.7/*zMax*/ };
+		grasslandFenseROI = { -0.6/*xMin*/,  0.4/*xMax*/, 0.0/*zMin*/, 3.0/*zMax*/ };
+	}
+	else
+	{
+		leftFenseROImax = { 0.2/*xMin*/, 0.9/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
+		leftFenseROImin = { 0.2/*xMin*/, 0.9/*xMax*/, 0.0/*zMin*/, 1.0/*zMax*/ };
+		duneROI = { -0.1/*xMin*/,  0.7/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
+		// frontFenseROI = { -1.3/*xMin*/,  0.3/*xMax*/, 1.2/*zMin*/, 2.1/*zMax*/ };
+		frontFenseROI = { -0.1/*xMin*/,  0.7/*xMax*/, 0.0/*zMin*/, 1.7/*zMax*/ };
+		grasslandFenseROI = { -0.4/*xMin*/,  0.6/*xMax*/, 0.0/*zMin*/, 3.0/*zMax*/ };
+	}
+
 
 	dstViewer->setBackgroundColor(0.259, 0.522, 0.957);
     dstViewer->addPointCloud<pointType>(dstCloud, "Destination Cloud");
@@ -124,13 +137,25 @@ void RobotLocator::preProcess(void)
 	mb_cuda::host_to_device(sourceThrust, device_cloud);
 
 	thrust::device_vector<mb_cuda::PointXYZRGB> d_filtered_cloud;
-
-	if (status == PASSING_DUNE)
-		groundROI = { -1.5,-0.5,0.5,1.0 };
+	if (!mode)
+	{
+		if (status == PASSING_DUNE)
+			groundROI = { -1.5,-0.5,0.5,1.0 };
+		else
+		{
+			groundROI = { -0.5,0.5,0,1.0 };
+		}
+	}
 	else
 	{
-		groundROI = { -0.5,0.5,0,1.0 };
+		if (status == PASSING_DUNE)
+			groundROI = { 0.5,1.5,0.5,1.0 };
+		else
+		{
+			groundROI = { -0.5,0.5,0,1.0 };
+		}
 	}
+
 
 	pcl::PassThrough<pointType> pass;
 	if (status <= 4)
@@ -255,16 +280,13 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 	Axis.normalize();
 	Eigen::Affine3f rotateToXZPlane;
 
-	if (status>=4)
+	if (status>4)
 	{
 		//-- Define the rotate transform
 		Eigen::Affine3f rotateToXZPlane = Eigen::Affine3f::Identity();
 		Eigen::AngleAxisf v1(angle, -Axis);
 		thisD435->RotatedMatrix = v1.toRotationMatrix();
-
-		//rotateToXZPlane.rotate(Eigen::AngleAxisf(angleAlpha, Eigen::Vector3f::UnitX()));
 		rotateToXZPlane.rotate(v1);
-
 	}
 	else 
 	{		
@@ -298,15 +320,14 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 	groundCoeffRotated->values[2] = groundCoeffRotatedVec[2];
 	groundCoeffRotated->values[3] = fabs(groundCoeff->values[3]) / vecNormal.norm();
 
-	//thisD435->groundCoeff[0] = groundCoeffRotatedVec[0];
-	//thisD435->groundCoeff[1] = groundCoeffRotatedVec[1];
-	//thisD435->groundCoeff[2] = groundCoeffRotatedVec[2];
-	//thisD435->groundCoeff[3] = groundCoeffRotated->values[3];
-	if(status>4)
-	 cout << "Ground coefficients: " << groundCoeffRotated->values[0] << " " 
-	                                 << groundCoeffRotated->values[1] << " "
-	                                 << groundCoeffRotated->values[2] << " " 
-	                                 << groundCoeffRotated->values[3] << endl;
+#ifdef DEBUG
+	if (status > 4)
+		cout << "Ground coefficients: " << groundCoeffRotated->values[0] << " "
+		<< groundCoeffRotated->values[1] << " "
+		<< groundCoeffRotated->values[2] << " "
+		<< groundCoeffRotated->values[3] << endl;
+#endif // DEBUG 
+
 
 	return cloud;
 }
@@ -696,11 +717,21 @@ void RobotLocator::locateBeforeDuneStage2(void)
 	//         "  zMin_  " << leftFenseROI.zMin << "  zMax_  " << leftFenseROI.zMax << endl;
 
 	//-- Change the color of the extracted part for debuging
+	if (!mode)
+	{
+		duneROI.xMin = leftFenseROImax.xMax - 0.3;
+		duneROI.xMax = leftFenseROImax.xMax + 0.9;
+		duneROI.zMin = leftFenseROImax.zMax - 0.3;
+		duneROI.zMax = leftFenseROImax.zMax + 0.9;
+	}
+	else
+	{
+		duneROI.xMin = leftFenseROImax.xMax - 0.9;
+		duneROI.xMax = leftFenseROImax.xMax + 0.3;
+		duneROI.zMin = leftFenseROImax.zMax - 0.3;
+		duneROI.zMax = leftFenseROImax.zMax + 0.9;
+	}
 
-	duneROI.xMin = leftFenseROImax.xMax - 0.3;
-	duneROI.xMax = leftFenseROImax.xMax + 0.9;
-	duneROI.zMin = leftFenseROImax.zMax - 0.3;
-	duneROI.zMax = leftFenseROImax.zMax + 0.9;
 
 
 	extractPlaneWithinROI(verticalCloud, duneROI, inliers, coefficients);
@@ -818,6 +849,10 @@ void RobotLocator::locatePassingDune(void)
 	pass.setIndices(indicesROI);
 	pass.filter(indicesROI->indices);
 
+	if (!segmentStatus)
+	{
+		return;
+	}
 	// Creating the KdTree object for the search method of the extraction
 	pcl::search::KdTree<pointType>::Ptr tree(new pcl::search::KdTree<pointType>);
 	tree->setInputCloud(verticalCloud);
@@ -855,7 +890,19 @@ void RobotLocator::locatePassingDune(void)
 	seg.setInputCloud(verticalCloud);
 	seg.segment(*inliers, *coefficients);
 
-	frontFenseROI = updateObjectROI(verticalCloud, inliers, 0.7, 0.0, 0.2, 0.2, true, true, frontFenseROI);
+	if (!segmentStatus)
+	{
+		return;
+	}
+	if (!mode)
+	{
+		frontFenseROI = updateObjectROI(verticalCloud, inliers, 0.7, 0.0, 0.2, 0.2, true, true, frontFenseROI);
+	}
+	else
+	{
+		frontFenseROI = updateObjectROI(verticalCloud, inliers, 0.0, 0.7, 0.2, 0.2, true, true, frontFenseROI);
+	}
+
 
 
 	double frountdDistance = calculateDistance(groundCoeffRotated, coefficients);
