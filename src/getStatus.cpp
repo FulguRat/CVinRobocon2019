@@ -189,4 +189,72 @@ void UpdateStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGro
 	}
 }
 
+void SendDatas(serial::Serial *my_serial, int status, double frountData, double lateralDatas)
+{
+	dataUnion frountUnion;
+	dataUnion lateralUnion;
+
+	frountUnion.data = frountData;
+	lateralUnion.data = lateralDatas;
+
+	uint8_t allDatas[13];
+
+	allDatas[0] = '/r';
+	allDatas[1] = '/n';
+	allDatas[11] = '/r';
+	allDatas[12] = '/n';
+
+	switch (status)
+	{
+	case 0:
+		allDatas[2] = 0;
+		break;
+	case 1:
+		allDatas[2] = 0;
+		break;
+	case 2:
+		allDatas[2] = 0;
+		break;
+	case 3:
+		allDatas[2] = 0;
+		break;
+	case 4:
+		allDatas[2] = 0;
+		break;
+	case 5:
+		allDatas[2] = 0;
+		break;
+	case 6:
+		allDatas[2] = 0;
+		break;
+	case 7:
+		allDatas[2] = 0;
+		break;
+	case 8:
+		allDatas[2] = 0;
+		break;
+	case 9:
+		allDatas[2] = 0;
+		break;
+	case 10:
+		allDatas[2] = 0;
+		break;
+	}
+	CopyData(frountUnion.dataChar, &allDatas[3], 4);
+	CopyData(lateralUnion.dataChar, &allDatas[7], 4);
+
+	my_serial->write(allDatas, 13);
+
+
+}
+
+void CopyData(uint8_t* origen, uint8_t* afterTreat, int size)
+{
+	for (size_t i = 0; i < size; i++)
+	{
+		*afterTreat = *origen;
+		afterTreat++;
+		origen++;
+	}
+}
 #endif

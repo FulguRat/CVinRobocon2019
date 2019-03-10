@@ -245,6 +245,7 @@ bool RobotLocator::extractGroundCoeff(pPointCloud cloud)
 
 pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 {
+
 	Eigen::Vector3f vecNormal(groundCoeff->values[0], groundCoeff->values[1], groundCoeff->values[2]);
 	//-- Define the rotate angle about x-axis
 	//double angleAlpha = atan(-groundCoeff->values[2] / groundCoeff->values[1]);
@@ -252,36 +253,44 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 	//cout << "angle: " << angle * 180 / CV_PI;
 	Eigen::Vector3f Axis = (-groundCoeff->values[3] / fabs(groundCoeff->values[3])) * vecNormal.cross(Eigen::Vector3f(0, -1, 0));
 	Axis.normalize();
+	Eigen::Affine3f rotateToXZPlane;
 
-	//-- Define the rotate transform
-	Eigen::Affine3f rotateToXZPlane = Eigen::Affine3f::Identity();
-	Eigen::AngleAxisf v1(angle, -Axis);
-	thisD435->RotatedMatrix = v1.toRotationMatrix();
-
-	//rotateToXZPlane.rotate(Eigen::AngleAxisf(angleAlpha, Eigen::Vector3f::UnitX()));
-	rotateToXZPlane.rotate(v1);
-	
-	//-- Apply transform
-	pcl::transformPointCloud(*cloud, *cloud, rotateToXZPlane);
-	//-- Update rotated ground coefficients
-	if (status > 4)
+	if (status>=4)
 	{
+		//-- Define the rotate transform
+		Eigen::Affine3f rotateToXZPlane = Eigen::Affine3f::Identity();
+		Eigen::AngleAxisf v1(angle, -Axis);
+		thisD435->RotatedMatrix = v1.toRotationMatrix();
+
+		//rotateToXZPlane.rotate(Eigen::AngleAxisf(angleAlpha, Eigen::Vector3f::UnitX()));
+		rotateToXZPlane.rotate(v1);
+
+	}
+	else 
+	{		
+
 		Eigen::AngleAxisf t_V(angle, -Axis);
 
 		angle = -25.0f / 180.0f*3.14;
 
-		Eigen::Affine3f roteY = Eigen::Affine3f::Identity();
+		Eigen::AngleAxisf t_V1(angle, Eigen::Vector3f::UnitY()), t_V2;
 
-		roteY.rotate(Eigen::AngleAxisf(angle, Eigen::Vector3f::UnitY()));
+		Eigen::Matrix3f t_R, t_R1, t_R2;
 
-		//-- Apply transform
-		pcl::transformPointCloud(*cloud, *cloud, roteY);
+		t_R = t_V.toRotationMatrix();
+		t_R1 = t_V1.toRotationMatrix();
+		t_R2 = t_R1 * t_R;
+
+		t_V2.fromRotationMatrix(t_R2);
+
+		Eigen::Affine3f rotateToXZPlane = Eigen::Affine3f::Identity();
+		rotateToXZPlane.rotate(t_V2);
+
+
 	}
 
-	//groundCoeffRotated->values[0] = groundCoeff->values[0];
-	//groundCoeffRotated->values[1] = -vecNormal.norm() * (groundCoeff->values[3] / abs(groundCoeff->values[3]));
-	//groundCoeffRotated->values[2] = 0.0f;
-	//groundCoeffRotated->values[3] = groundCoeff->values[3];
+	pcl::transformPointCloud(*cloud, *cloud, rotateToXZPlane);
+
 	Eigen::Vector3f groundCoeffRotatedVec = rotateToXZPlane * vecNormal;
 
 	groundCoeffRotated->values[0] = groundCoeffRotatedVec[0];

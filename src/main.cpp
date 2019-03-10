@@ -48,6 +48,8 @@ int main(int argc, char* argv[])
 #endif
 	while (!fajLocator.isStoped())
 	{	
+		act_d435.status = fajLocator.status;
+
                 if(fajLocator.status != BONE_RECOGNITION)
 		{
 			fajLocator.updateCloud();
