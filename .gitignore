@@ -307,4 +307,4 @@ CTestTestfile.cmake
 build/
 bin/
 model/
-script/
+inc/flann/

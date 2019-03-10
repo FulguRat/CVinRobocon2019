@@ -23,15 +23,12 @@ set (SERIAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/inc/serial/src)
 set (CAMERA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/inc/mindVisionApi/src)
 set (INFERENCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/inc/inference_engine)
 set (GFLAGS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/inc/gflags)
-
+set (FLANN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/inc/flann)
 FILE(GLOB HEADER_LIST "${CMAKE_SOURCE_DIR}/src/*.h")
 FILE(GLOB SOURCE_LIST "${CMAKE_SOURCE_DIR}/src/*.cpp")
-FILE(GLOB IOHEADER_LIST "${CMAKE_SOURCE_DIR}/mb_cuda/io/*.h")
-FILE(GLOB IOSOURCE_LIST "${CMAKE_SOURCE_DIR}/mb_cuda/io/*.cpp")
-FILE(GLOB FILTERS_LIST "${CMAKE_SOURCE_DIR}/mb_cuda/filters/*.h")
-FILE(GLOB COMMON_LIST "${CMAKE_SOURCE_DIR}/mb_cuda/common/*.h")
+#FILE(GLOB mb_cuda_SRC ${CMAKE_CURRENT_SOURCE_DIR}/mb_cuda/filters/*.cu ${CMAKE_CURRENT_SOURCE_DIR}/mb_cuda/io/*.cu ${CMAKE_CURRENT_SOURCE_DIR}/mb_cuda/io/*.cpp)
 
-add_executable(${PROJ_NAME} ${SOURCE_LIST} ${HEADER_LIST} ${IOHEADER_LIST} ${IOSOURCE_LIST} ${FILTERS_LIST} ${COMMON_LIST})
+add_executable(${PROJ_NAME} ${SOURCE_LIST} ${HEADER_LIST})
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJ_NAME})
 
 # OpenCV
@@ -70,6 +67,15 @@ IF(UNIX)
 		target_link_libraries(${PROJ_NAME} ${CUDA_LIBRARIES})
 	endif()
 
+        #flann
+        #set (Flann_DIR /home/nvidia/code/flann-1.9.1/build)
+        #FIND_PACKAGE(Flann REQUIRED)
+        #if(Flann_FOUND)
+	#	message(STATUS "flann found")
+           	#include_directories(${FLANN_INCLUDE_DIRS})
+		#target_link_libraries(${PROJ_NAME} ${FLANN_LIBRARIES})
+	#endif()
+
         #object inc
 	include_directories(${PROJECT_INCLUDE_DIR}/util)
 	include_directories(${PROJECT_BINARY_DIR}/util)
@@ -83,31 +89,30 @@ IF(UNIX)
 	    ${INFERENCE_DIR}
 	    ${GFLAGS_DIR}/include
 	    ${CMAKE_CURRENT_SOURCE_DIR}/inc/mindVisionApi/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/inc/mb_cuda/common
+            ${CMAKE_CURRENT_SOURCE_DIR}/inc/mb_cuda/filters
+            ${CMAKE_CURRENT_SOURCE_DIR}/inc/mb_cuda/io
+            ${CMAKE_CURRENT_SOURCE_DIR}/inc
+            #${FLANN_DIR}/include
+            #${FLANN_DIR}/include/flann
 	    )
-
-	CUDA_ADD_EXECUTABLE(${PROJECT_NAME}
-    grabber/kinect2grabber.cpp
-    mb_cuda/io/pcl_thrust.cpp
-    mb_cuda/io/host_device.cu
-    mb_cuda/filters/pass_through.cu
-    mb_cuda/filters/voxel_grid.cu
-    mb_cuda/filters/statistical_outlier_removal.cu
-#    mb_cuda/filters/filter.h
-#    mb_cuda/common/point_cloud.h
-#    mb_cuda/io/host_device.h
-#    mb_cuda/io/host_device.cu
-    )
+        #cuda_add_library(mb_cuda_lib SHARED ${mb_cuda_SRC}) 
+        #$target_link_libraries(${PROJ_NAME} /home/nvidia/code/robocon/CVinRobocon2019/inc/flann/lib/libflann.so)    
+        #target_link_libraries(${PROJ_NAME} /home/nvidia/code/robocon/CVinRobocon2019/inc/flann/lib/libflann_cpp.so)
+        #target_link_libraries(${PROJ_NAME} /home/nvidia/code/robocon/CVinRobocon2019/inc/flann/lib/libflann_cuda.so)
 	#object lib
 	target_link_libraries(${PROJ_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/inc/tensorRT4/ARM64/lib/libnvcaffe_parser.so)
 	target_link_libraries(${PROJ_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/inc/tensorRT4/ARM64/lib/libnvinfer.so)
 	target_link_libraries(${PROJ_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/inc/tensorRT4/ARM64/lib/libnvinfer_plugin.so)
 	target_link_libraries(${PROJ_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/inc/tensorRT4/ARM64/lib/libnvparsers.so)
+ 
 
 	target_link_libraries(${PROJ_NAME}
 		${OpenCV_LIBS}
 		${CMAKE_CURRENT_SOURCE_DIR}/lib/libinference.so
 		${CMAKE_CURRENT_SOURCE_DIR}/lib/libserial.so
 		${CMAKE_CURRENT_SOURCE_DIR}/lib/libcamera.so
+                ${CMAKE_CURRENT_SOURCE_DIR}/lib/libmb_cuda_lib.so
 		${GFLAGS_DIR}/lib/libgflags_nothreads.a
 		${CUDA_LIBRARIES}
 	)

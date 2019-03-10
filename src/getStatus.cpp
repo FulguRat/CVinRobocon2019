@@ -30,11 +30,11 @@ void GetStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGround
 	    case 2:
 	    if(serialData[3] == '0')
 	      {
-		*playGround = 1;
+		*playGround = 0;
 		step = 3;
 	      }else if(serialData[3] == '1')
 	      {
-		*playGround = 0;
+		*playGround = 1;
 		step = 3;
 	      }else{
 		step = 0;
@@ -123,11 +123,11 @@ void UpdateStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGro
 	    case 2:
 	    if(serialData[3] == '0')
 	      {
-		*playGround = 1;
+		*playGround = 0;
 		step = 3;
 	      }else if(serialData[3] == '1')
 	      {
-		*playGround = 0;
+		*playGround = 1;
 		step = 3;
 	      }else{
 		wileFlag = 0;

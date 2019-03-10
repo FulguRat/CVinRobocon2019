@@ -11,7 +11,6 @@ using namespace std::chrono;
 
 int main(int argc, char* argv[])
 {
-        int playground = 1;
 	std::cout << "[INFO]" << "ActD435 init...\n";
 	ActD435			fajD435;
 	RobotLocator 	fajLocator;
@@ -35,16 +34,17 @@ int main(int argc, char* argv[])
         //get status
         serial::Serial *serialPtr = &my_serial;
         std::cout << "[INFO]" << "GetStatus:\n";
-        GetStatus(serialPtr,&fajLocator.status,&playground);
+        GetStatus(serialPtr,&fajLocator.status,&mode);
+        
 
     	// openVINO init
     	std::cout << "openvino init\n";
-    	TensorRT tensorRT(argc,argv,playground);
+    	TensorRT tensorRT(argc,argv,mode);
 
     	// camera init
     	std::cout << "camera init\n";
     	// playground-1 only want to be test
-    	MvInit mvCamera(playground-1);
+    	MvInit mvCamera(mode);
 #endif
 	while (!fajLocator.isStoped())
 	{	
@@ -87,7 +87,7 @@ int main(int argc, char* argv[])
 			case UNDER_MOUNTAIN:
 				fajLocator.locateUnderMountain();
 #ifdef __linux__
-				UpdateStatus(serialPtr,&fajLocator.status,&playground);
+				UpdateStatus(serialPtr,&fajLocator.status,&mode);
 #endif
 				break;
 

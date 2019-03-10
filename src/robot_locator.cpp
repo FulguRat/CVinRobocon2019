@@ -61,7 +61,7 @@ void RobotLocator::init(ActD435& d435)
 	for (int i = 0; i < cycleNum; i++)
 	{
 		sourceThrust = thisD435->update();
-		mb_cuda::thrust_to_pcl(sourcethrust, srcCloud);
+		mb_cuda::thrust_to_pcl(sourceThrust, srcCloud);
 
 		pcl::PassThrough<pointType> pass;
 		pass.setInputCloud(srcCloud);
@@ -110,7 +110,7 @@ void RobotLocator::init(ActD435& d435)
 	cout << "Done initialization." << endl;
 }
 
-mb_cuda::thrustCloud RobotLocator::updateCloud(void)
+mb_cuda::thrustCloudT RobotLocator::updateCloud(void)
 {
 	//-- copy the pointer to srcCloud
 	sourceThrust = thisD435->update();
@@ -121,7 +121,7 @@ void RobotLocator::preProcess(void)
 {
 	//-- Pass through filter
 	thrust::device_vector<mb_cuda::PointXYZRGB> device_cloud;
-	mb_cuda::host_to_device(sourcethrust, device_cloud);
+	mb_cuda::host_to_device(sourceThrust, device_cloud);
 
 	thrust::device_vector<mb_cuda::PointXYZRGB> d_filtered_cloud;
 

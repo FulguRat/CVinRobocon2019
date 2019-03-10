@@ -57,7 +57,7 @@ public:
 
 	void init(ActD435& d435);
 
-	mb_cuda::thrustCloud updateCloud(void);
+	mb_cuda::thrustCloudT updateCloud(void);
 
 	void preProcess(void);
 
