@@ -19,7 +19,7 @@
 #include "mb_cuda/filters/statistical_outlier_removal.h"
 
 extern int mode;
-
+extern int dbStatus;
 #define DEBUG
 #define LEFT_MODE		0
 #define RIGHT_MODE		1
@@ -63,15 +63,18 @@ enum roiFlag {
 };
 
 extern enum roiFlag colorFrameRoi;
+const float carWidth = 0;
+const float lineEnd2secondRopeDist = 1580;
 const float fenseCorner2fenseDist = 1440;
 const float lineCross2RopeDist = 860;
 const float lineCross2FrontfenseDist = 850;
 const float line2BesidefenseDist = 715;
-const float lineEnd2BesidefenseDist = 730;
+const float lineEnd2BesidefenseDist = 710;
 const float mountainDist = 1650;
 const float pillar2leftFenseDist = 80;
 const float pillarRadius = 80;
-
+extern float frontDist;
+extern float lateralDist;
 typedef struct
 {
 	//inner arguments
@@ -183,7 +186,7 @@ public:
 	int houghlineThresh = 50;
 	int pillarStatus;
 	float pillarHeight;
-	unsigned int status = CLIMBING_MOUNTAIN;
+	unsigned int status = BEFORE_GRASSLAND_STAGE_1;
 
 	mb_cuda::thrustCloudT	thrustcloud;
 

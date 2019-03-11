@@ -610,7 +610,9 @@ void RobotLocator::locateBeforeDuneStage1(void)
 	else { nextStatusCounter = 0; }
 
 	if (nextStatusCounter >= 3) { status++; }
-	diatancemeasurement = xDistance;
+	lateralDist = xDistance;
+	frontDist = 0.0f;
+	dbStatus = 0;
 
 #ifdef DEBUG
 	for (int i = 0; i < inliers->indices.size(); i++)
@@ -767,6 +769,9 @@ void RobotLocator::locateBeforeDuneStage2(void)
 
 	diatancemeasurement = duneDistance;
 
+	lateralDist = xDistance;
+	frontDist = duneDistance;
+	dbStatus = 1;
 	//-- Change the color of the extracted part for debuging
 #ifdef DEBUG
 	for (int i = 0; i < inliers->indices.size(); i++)
@@ -819,12 +824,15 @@ void RobotLocator::locateBeforeDuneStage3(void)
 	double duneDistance = calculateDistance(groundCoeffRotated, coefficients);
 	diatancemeasurement = duneDistance;
 
+	lateralDist = 0;
+	frontDist = duneDistance;
+
 	if (duneDistance < 0.3f) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
 	if (nextStatusCounter >= 3) { status+=2; }
 
-
+	dbStatus = 1;
 #ifdef DEBUG
 	//-- Change the color of the extracted part for debuging
 	for (int i = 0; i < inliers->indices.size(); i++)
@@ -965,10 +973,14 @@ void RobotLocator::locateBeforeGrasslandStage1(void)
 
 	besideFenseDist = mode == LEFT_MODE ? fenseCorner2fenseDist - thisD435->nowXpos : fenseCorner2fenseDist + thisD435->nowXpos;
 
+	lateralDist = besideFenseDist;
+	frontDist = frontFenseDist + carWidth;
+
+	dbStatus = 2;
 	if (besideFenseDist < 1550) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
-	if (nextStatusCounter >= 2) { status++; thisD435->status++;}
+	if (nextStatusCounter >= 2) { status++; thisD435->status = status;}
 	
 #ifdef DEBUG
 	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
@@ -996,6 +1008,10 @@ void RobotLocator::locateBeforeGrasslandStage2(void)
 			besideFenseDist = mode == LEFT_MODE ? (fenseCorner2fenseDist - pillarRadius - thisD435->nowXpos) : (fenseCorner2fenseDist - pillarRadius + thisD435->nowXpos);
 		}
 	}
+	lateralDist = besideFenseDist;
+	frontDist = secondRopeDist;
+
+	dbStatus = 3;
 	if (secondRopeDist < 700 && thisD435->pillarStatus != 1) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
@@ -1063,12 +1079,24 @@ void RobotLocator::locateUnderMountain(void)
 
 	thisD435->FindLineEnd();
 
-	frontFenseDist = thisD435->GetDepth(thisD435->lineEnd, thisD435->lineEndIn3D);
+	frontFenseDist = thisD435->GetDepth(thisD435->lineEnd, thisD435->lineEndIn3D) + carWidth;
 	besideFenseDist = mode == LEFT_MODE ? lineEnd2BesidefenseDist - thisD435->nowXpos : lineEnd2BesidefenseDist + thisD435->nowXpos;
-	
+
+	if (frontFenseDist > lineEnd2secondRopeDist)
+	{
+		frontFenseDist -= lineEnd2secondRopeDist;
+		dbStatus = 3;
+	}
+	else
+	{
+		dbStatus = 4;
+		besideFenseDist = 1440 - besideFenseDist;
+	}
 	if (besideFenseDist > 850 && frontFenseDist < 800)
 		colorFrameRoi = mode == LEFT_MODE ? leftRoi : rightRoi;
 	//ͣ��
+	lateralDist = besideFenseDist;
+	frontDist = frontFenseDist;
 	if (0) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
@@ -1092,23 +1120,35 @@ void RobotLocator::locateClimbingMountain(void)
 	thisD435->FindHoughLineCross();
 	frontFenseDist = thisD435->GetDepth(thisD435->lineCross, thisD435->lineCrossIn3D);
 	
+	dbStatus = 5;
 	switch (stageJudge)
 	{
 		case 2:
 		{
 			if (thisD435->filterLine.size() == 2 && (thisD435->nowXpos * (2 * mode - 1)) < 0)
+			{
+				dbStatus = 5;
 				peakDist = mode == LEFT_MODE ? thisD435->nowXpos : -thisD435->nowXpos;
+			}
+			else
+				peakDist = 0;
 		}
 		break;
 
 		case 3:
 		{
 			if (thisD435->filterLine.size() == 2)
+			{
 				peakDist = mode == LEFT_MODE ? thisD435->nowXpos : -thisD435->nowXpos;
+				dbStatus = 6;
+			}			
+			else
+				peakDist = 0;
 		}		
 		break;
 	}
-
+	lateralDist = peakDist;
+	frontDist = frontFenseDist + carWidth;
 	if (stageJudge == 3 && thisD435->filterLine.size() != 2) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
@@ -1133,7 +1173,12 @@ void RobotLocator::locateReachingMountain(void)
 
 	if (thisD435->filterLine.size() == 2 && (thisD435->nowXpos * (2 * mode - 1)) < 0)
 		peakDist = mode == LEFT_MODE ? thisD435->nowXpos : -thisD435->nowXpos;
+	else
+		peakDist = 0;
+	lateralDist = peakDist;
+	frontDist = frontFenseDist + carWidth;
 
+	dbStatus = 7;
 	if (0) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 

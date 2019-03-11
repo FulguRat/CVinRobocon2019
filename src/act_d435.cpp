@@ -3,8 +3,9 @@
 roiFlag colorFrameRoi = midRoi;
 int mode = LEFT_MODE;
 //int mode = RIGHT_MODE;
-
-
+float frontDist;
+float lateralDist;
+int dbStatus = 0;
 ActD435::ActD435() : align(RS2_STREAM_COLOR),
 cloudByRS2(new pointCloud)/*,
 viewer("Temp Viewer")*/

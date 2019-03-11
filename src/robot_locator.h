@@ -30,6 +30,7 @@
 
 using namespace Eigen;
 
+
 //-- ROI of an object
 typedef struct
 {
@@ -100,6 +101,7 @@ public:
 	unsigned int roiChangeCounter;
 	double diatancemeasurement;
 	bool segmentStatus = true;
+
 	
 private:
 	ActD435*        thisD435;

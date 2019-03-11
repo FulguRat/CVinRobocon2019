@@ -36,7 +36,10 @@ int main(int argc, char* argv[])
         std::cout << "[INFO]" << "GetStatus:\n";
         GetStatus(serialPtr,&fajLocator.status,&mode);
         
-
+		if (fajLocator.status <= BEFORE_GRASSLAND_STAGE_1)
+			fajD435.status = BEFORE_GRASSLAND_STAGE_1;
+		else
+			fajD435.status = fajLocator.status;
     	// openVINO init
     	std::cout << "openvino init\n";
     	TensorRT tensorRT(argc,argv,mode);
@@ -50,6 +53,9 @@ int main(int argc, char* argv[])
 	{
 		fajLocator.segmentStatus = true;
 		fajD435.status = fajLocator.status;
+
+		frontDist = 0.0f;
+		lateralDist = 0.0f;
 
                 if(fajLocator.status != BONE_RECOGNITION)
 		{
@@ -119,8 +125,13 @@ int main(int argc, char* argv[])
 			default:
 				break;
 		}
-		if(status <= 4)
-			xdistance=distancefilter.predictAndCorrect(Mat_<float>(1, 1)<<fajLocator.diatancemeasurement).at<float>(0,0);
+		//if(status <= 4)
+		//	xdistance=distancefilter.predictAndCorrect(Mat_<float>(1, 1)<<fajLocator.diatancemeasurement).at<float>(0,0);
+		if (fajLocator.status!=0&& fajLocator.status!=8)
+		{
+			SendDatas(serialPtr, dbStatus, frontDist, lateralDist);
+		}
+		
 	}
 
 	return EXIT_SUCCESS;
