@@ -20,6 +20,18 @@ int main(int argc, char* argv[])
 	fajLocator.init(fajD435);
 	fajLocator.status = STARTUP_INITIAL;
 
+#ifdef DEBUG
+	chrono::steady_clock::time_point start;
+	chrono::steady_clock::time_point stop;
+	chrono::steady_clock::time_point startt;
+	chrono::steady_clock::time_point stopt;
+	auto totalTime = chrono::duration_cast<chrono::microseconds>(stopt - startt);
+	auto totalTime1 = chrono::duration_cast<chrono::microseconds>(stop - start);
+	auto totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
+	auto totalTime3 = chrono::duration_cast<chrono::microseconds>(stop - start);
+#endif // DEBUG
+
+
 	distancefilter.initKalmanFilter(2, 1, (cv::Mat_<float>(2, 2) << 1, 0.3, 0, 1), (cv::Mat_<float>(1, 2) << 1, 0), 1e-5, 1e-2, 0.1);
 #ifdef __linux__
 	std::cout << "[INFO]" << "serial init...\n";
@@ -51,6 +63,11 @@ int main(int argc, char* argv[])
 #endif
 	while (!fajLocator.isStoped())
 	{
+#ifdef DEBUG
+		stopt = chrono::steady_clock::now();
+		totalTime = chrono::duration_cast<chrono::microseconds>(stopt - startt);
+		startt = chrono::steady_clock::now();
+#endif
 		fajLocator.segmentStatus = true;
 		fajD435.status = fajLocator.status;
 
@@ -59,8 +76,22 @@ int main(int argc, char* argv[])
 
                 if(fajLocator.status != BONE_RECOGNITION)
 		{
+#ifdef DEBUG
+			start = chrono::steady_clock::now();
+#endif // DEBUG
+
 			fajLocator.updateCloud();
+#ifdef DEBUG
+			stop = chrono::steady_clock::now();
+			totalTime1 = chrono::duration_cast<chrono::microseconds>(stop - start);
+			start = chrono::steady_clock::now();
+#endif // DEBUG
 			fajLocator.preProcess();
+#ifdef DEBUG
+			stop = chrono::steady_clock::now();
+			totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
+			start = chrono::steady_clock::now();
+#endif
 		}	
 		//steady_clock::time_point t1 = steady_clock::now();
 		switch (fajLocator.status)
@@ -125,12 +156,24 @@ int main(int argc, char* argv[])
 			default:
 				break;
 		}
+		if (fajLocator.status != BONE_RECOGNITION)
+		{
+#ifdef DEBUG
+			stop = chrono::steady_clock::now();
+			totalTime3 = chrono::duration_cast<chrono::microseconds>(stop - start);
+#endif // DEBUG
+		}
+
 		//if(status <= 4)
 		//	xdistance=distancefilter.predictAndCorrect(Mat_<float>(1, 1)<<fajLocator.diatancemeasurement).at<float>(0,0);
 		if (fajLocator.status!=0&& fajLocator.status!=8)
 		{
 			SendDatas(serialPtr, dbStatus, frontDist, lateralDist);
 		}
+#ifdef DEBUG
+		cout << "total 4 " << double(totalTime.count()) / 1000.0f << " " << double(totalTime1.count()) / 1000.0f << " " << double(totalTime2.count()) / 1000.0f << " " << double(totalTime3.count()) / 1000.0f << endl;
+#endif // DEBUG
+
 		
 	}
 

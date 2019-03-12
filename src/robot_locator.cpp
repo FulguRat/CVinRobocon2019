@@ -296,7 +296,6 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 	//cout << "angle: " << angle * 180 / CV_PI;
 	Eigen::Vector3f Axis = (-groundCoeff->values[3] / fabs(groundCoeff->values[3])) * vecNormal.cross(Eigen::Vector3f(0, -1, 0));
 	Axis.normalize();
-	Eigen::Affine3f rotateToXZPlane;
 
 	if (status>4)
 	{
@@ -305,6 +304,14 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 		Eigen::AngleAxisf v1(angle, -Axis);
 		thisD435->RotatedMatrix = v1.toRotationMatrix();
 		rotateToXZPlane.rotate(v1);
+		pcl::transformPointCloud(*cloud, *cloud, rotateToXZPlane);
+
+		Eigen::Vector3f groundCoeffRotatedVec = rotateToXZPlane * vecNormal;
+
+		groundCoeffRotated->values[0] = groundCoeffRotatedVec[0];
+		groundCoeffRotated->values[1] = groundCoeffRotatedVec[1];
+		groundCoeffRotated->values[2] = groundCoeffRotatedVec[2];
+		groundCoeffRotated->values[3] = fabs(groundCoeff->values[3]) / vecNormal.norm();
 	}
 	else 
 	{		
@@ -325,18 +332,19 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 
 		Eigen::Affine3f rotateToXZPlane = Eigen::Affine3f::Identity();
 		rotateToXZPlane.rotate(t_V2);
+		pcl::transformPointCloud(*cloud, *cloud, rotateToXZPlane);
+
+		Eigen::Vector3f groundCoeffRotatedVec = rotateToXZPlane * vecNormal;
+
+		groundCoeffRotated->values[0] = groundCoeffRotatedVec[0];
+		groundCoeffRotated->values[1] = groundCoeffRotatedVec[1];
+		groundCoeffRotated->values[2] = groundCoeffRotatedVec[2];
+		groundCoeffRotated->values[3] = fabs(groundCoeff->values[3]) / vecNormal.norm();
 
 
 	}
 
-	pcl::transformPointCloud(*cloud, *cloud, rotateToXZPlane);
 
-	Eigen::Vector3f groundCoeffRotatedVec = rotateToXZPlane * vecNormal;
-
-	groundCoeffRotated->values[0] = groundCoeffRotatedVec[0];
-	groundCoeffRotated->values[1] = groundCoeffRotatedVec[1];
-	groundCoeffRotated->values[2] = groundCoeffRotatedVec[2];
-	groundCoeffRotated->values[3] = fabs(groundCoeff->values[3]) / vecNormal.norm();
 
 #ifdef DEBUG
 	if (status > 4)
@@ -401,7 +409,7 @@ pPointCloud RobotLocator::removeHorizontalPlane(pPointCloud cloud, bool onlyGrou
 				groundCoeffRotated->values[2] * cloud->points[i].z +
 				groundCoeffRotated->values[3]) / vecNormal.norm();
 
-			if (angleCosine < 0.90 || distanceToPlane > 0.05)
+			if (angleCosine < 0.80 || distanceToPlane > 0.05)
 			{
 				verticalCloud->points.push_back(cloud->points[i]);
 			}
@@ -414,7 +422,7 @@ pPointCloud RobotLocator::removeHorizontalPlane(pPointCloud cloud, bool onlyGrou
 	pcl::StatisticalOutlierRemoval<pointType> passSOR;
 	passSOR.setInputCloud(verticalCloud);
 	passSOR.setMeanK(30);
-	passSOR.setStddevMulThresh(0.05);
+	passSOR.setStddevMulThresh(0.1);
 	passSOR.filter(*verticalCloud);
 
 
@@ -434,17 +442,48 @@ pPointCloud RobotLocator::removeHorizontalPlane(pPointCloud cloud, bool onlyGrou
 
 pPointCloud RobotLocator::extractVerticalCloud(pPointCloud cloud)
 {
+#ifdef DEBUG
+	chrono::steady_clock::time_point start;
+	chrono::steady_clock::time_point stop;
+	auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
+	auto totalTime1 = chrono::duration_cast<chrono::microseconds>(stop - start);
+	auto totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
+	start = chrono::steady_clock::now();
+#endif
+
 	extractGroundCoeff(forGroundCloud);
-	if (segmentStatus)
+	if (!segmentStatus)
 	{
 		return 0;
 	}
+#ifdef DEBUG
+	stop = chrono::steady_clock::now();
+	totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
+
+	//cout<<" iferror1 "<<endl;
+	//-- Rotate the point cloud to horizontal
+	start = chrono::steady_clock::now();
+#endif
 	//-- Rotate the point cloud to horizontal
 	rotatePointCloudToHorizontal(cloud);
 
+#ifdef DEBUG
+	stop = chrono::steady_clock::now();
+	totalTime1 = chrono::duration_cast<chrono::microseconds>(stop - start);
+
+	//cout<<" iferror1 "<<endl;
+	//-- Rotate the point cloud to horizontal
+	start = chrono::steady_clock::now();
+#endif
 	//-- Remove all horizontal planes
 
 	removeHorizontalPlane(cloud);
+
+#ifdef DEBUG
+	stop = chrono::steady_clock::now();
+	totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
+	cout<<"extractVerticalCloud 3 " <<double(totalTime.count()) / 1000.0f <<" "<<double(totalTime1.count()) / 1000.0f <<" "<<double(totalTime2.count()) / 1000.0f <<endl;
+#endif
 	return verticalCloud;
 
 }
@@ -544,7 +583,7 @@ ObjectROI RobotLocator::updateObjectROI(pPointCloud cloud, pcl::PointIndices::Pt
 double RobotLocator::calculateDistance(pcl::ModelCoefficients::Ptr groundcoefficients, pcl::ModelCoefficients::Ptr planecoefficients)
 {
 	Vector3d groundNormal = Vector3d(groundcoefficients->values[0], groundcoefficients->values[1], groundcoefficients->values[2]);
-	Vector3d planeNormal = Vector3d(planecoefficients->values[0], planecoefficients->values[1], planecoefficients->values[3]);
+	Vector3d planeNormal = Vector3d(planecoefficients->values[0], planecoefficients->values[1], planecoefficients->values[2]);
 
 	double cameraHeight = abs(groundCoeffRotated->values[3]) / groundNormal.norm();
 
@@ -564,39 +603,51 @@ void RobotLocator::locateBeforeDuneStage1(void)
 	auto totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
 	auto totalTime3 = chrono::duration_cast<chrono::microseconds>(stop - start);
 	auto totalTime4 = chrono::duration_cast<chrono::microseconds>(stop - start);
+	start = chrono::steady_clock::now(); 
 #endif
 
-	start = chrono::steady_clock::now();
 	extractVerticalCloud(filteredCloud);
 	if (!segmentStatus)
 	{
 		return;
 	}
+#ifdef DEBUG
 	stop = chrono::steady_clock::now();
 	totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
-	//totalTime3= chrono::duration_cast<chrono::microseconds>(stop - start);
+#endif // DEBUG
+
    //-- Perform the plane segmentation with specific indices
 	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
 	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
-
+#ifdef DEBUG
 	start = chrono::steady_clock::now();
+#endif // DEBUG
+
 	extractPlaneWithinROI(verticalCloud, leftFenseROImax, inliers, coefficients);
 	if (!segmentStatus)
 	{
 		return;
 	}
+#ifdef DEBUG
 	stop = chrono::steady_clock::now();
 	totalTime1 = chrono::duration_cast<chrono::microseconds>(stop - start);
+#endif
 	leftFenseROImax = updateObjectROI(verticalCloud, inliers, 0.3, 0.3, 0.1, 0.1, true, true, leftFenseROImax);
 
 	Eigen::Vector4f minVector, maxVector;
 	pcl::getMinMax3D(*verticalCloud, *inliers, minVector, maxVector);
-
+#ifdef DEBUG
+	start = chrono::steady_clock::now();
+#endif // DEBUG
 	extractPlaneWithinROI(verticalCloud, leftFenseROImin, inliers, coefficients);
 	if (!segmentStatus)
 	{
 		return;
 	}
+#ifdef DEBUG
+	stop = chrono::steady_clock::now();
+	totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
+#endif
 
 	double xDistance = calculateDistance(groundCoeffRotated, coefficients);
 
@@ -626,7 +677,7 @@ void RobotLocator::locateBeforeDuneStage1(void)
 	dstViewer->updatePointCloud(forGroundCloud, "ground Cloud");
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
-	cout << " locateBeforeDuneStage1 2 " << double(totalTime.count()) / 1000.0f << " " << double(totalTime1.count()) / 1000.0f << " " << endl;
+	cout << " locateBeforeDuneStage1 2 " << double(totalTime.count()) / 1000.0f << " " << double(totalTime1.count()) / 1000.0f << " " <<  double(totalTime2.count()) / 1000.0f<<endl;
 #endif
 
 
@@ -634,11 +685,26 @@ void RobotLocator::locateBeforeDuneStage1(void)
 
 void RobotLocator::locateBeforeDuneStage2(void)
 {
+#ifdef DEBUG
+	chrono::steady_clock::time_point start;
+	chrono::steady_clock::time_point stop;
+	auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
+	auto totalTime1 = chrono::duration_cast<chrono::microseconds>(stop - start);
+	auto totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
+	auto totalTime3 = chrono::duration_cast<chrono::microseconds>(stop - start);
+	auto totalTime4 = chrono::duration_cast<chrono::microseconds>(stop - start);
+	start = chrono::steady_clock::now();
+#endif
 	extractVerticalCloud(filteredCloud);
 	if (!segmentStatus)
 	{
 		return;
 	}
+#ifdef DEBUG
+	stop = chrono::steady_clock::now();
+	totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
+	start = chrono::steady_clock::now();
+#endif // DEBUG
 	//-- Perform the plane segmentation with specific indices
 	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
 	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
@@ -648,6 +714,12 @@ void RobotLocator::locateBeforeDuneStage2(void)
 	{
 		return;
 	}
+#ifdef DEBUG
+	stop = chrono::steady_clock::now();
+	totalTime1 = chrono::duration_cast<chrono::microseconds>(stop - start);
+#endif // DEBUG
+
+
 	leftFenseROImin = updateObjectROI(verticalCloud, inliers, 0.2, 0.2, 0.0, 0.0, true, false, leftFenseROImin);
 
 	//-- The formula of dune is ax + by + cz + d = 0, which z = 0.0 and y = cameraHeight - 0.05
@@ -661,14 +733,18 @@ void RobotLocator::locateBeforeDuneStage2(void)
 		dstCloud->points[inliers->indices[i]].g = 67;
 		dstCloud->points[inliers->indices[i]].b = 53;
 	}
+	start = chrono::steady_clock::now();
 #endif
 
 	extractPlaneWithinROI(verticalCloud, leftFenseROImax, inliers, coefficients);
-
 	if (!segmentStatus)
 	{
 		return;
 	}
+#ifdef DEBUG
+	stop = chrono::steady_clock::now();
+	totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
+#endif // DEBUG
 
 	Vector3d vecNormal = Vector3d(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
 
@@ -753,12 +829,18 @@ void RobotLocator::locateBeforeDuneStage2(void)
 	}
 
 
-
+#ifdef DEBUG
+	start = chrono::steady_clock::now();
+#endif // DEBUG
 	extractPlaneWithinROI(verticalCloud, duneROI, inliers, coefficients);
 	if (!segmentStatus)
 	{
 		return;
 	}
+#ifdef DEBUG
+	stop = chrono::steady_clock::now();
+	totalTime3 = chrono::duration_cast<chrono::microseconds>(stop - start);
+#endif // DEBUG
 
 	double duneDistance = calculateDistance(groundCoeffRotated, coefficients);
 
@@ -785,6 +867,8 @@ void RobotLocator::locateBeforeDuneStage2(void)
 	dstViewer->updatePointCloud(forGroundCloud, "ground Cloud");
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
+	cout << double(totalTime.count()) / 1000.0f << " " << double(totalTime1.count()) / 1000.0f << " " << double(totalTime2.count()) / 1000.0f << " " << double(totalTime3.count()) / 1000.0f << endl;
+
 #endif
 
 
@@ -792,33 +876,41 @@ void RobotLocator::locateBeforeDuneStage2(void)
 
 void RobotLocator::locateBeforeDuneStage3(void)
 {
-
-
+#ifdef DEBUG
 	chrono::steady_clock::time_point start;
 	chrono::steady_clock::time_point stop;
-
 	auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
+	auto totalTime1 = chrono::duration_cast<chrono::microseconds>(stop - start);
+	auto totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
 	start = chrono::steady_clock::now();
+#endif
 	extractVerticalCloud(filteredCloud);
-	stop = chrono::steady_clock::now();
-	totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
-
 	if (!segmentStatus)
 	{
 		return;
 	}
+#ifdef DEBUG
+	stop = chrono::steady_clock::now();
+	totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
+#endif
 	//-- Perform the plane segmentation with specific indices
 	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
 	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 
+#ifdef DEBUG
+	start = chrono::steady_clock::now();
+#endif // DEBUG
 
 	extractPlaneWithinROI(verticalCloud, duneROI, inliers, coefficients);
-
 	if (!segmentStatus)
 	{
 		return;
 	}
 
+#ifdef DEBUG
+	stop = chrono::steady_clock::now();
+	totalTime1 = chrono::duration_cast<chrono::microseconds>(stop - start);
+#endif
 	duneROI = updateObjectROI(verticalCloud, inliers, 0.0, 0.0, 0.3, 0.3, false, true, duneROI);
 
 	double duneDistance = calculateDistance(groundCoeffRotated, coefficients);
@@ -850,7 +942,7 @@ void RobotLocator::locateBeforeDuneStage3(void)
 	//		<< coefficients->values[2] << " "
 	//		<< coefficients->values[3];
 	//	cout << " " << cameraHeight << endl;
-	cout << " locateBeforeDuneStage1 3 " << double(totalTime.count()) / 1000.0f << " " << endl;
+	cout << " locateBeforeDuneStage1 3 " << double(totalTime.count()) / 1000.0f << " " << double(totalTime1.count()) / 1000.0f<<endl;
 	dstViewer->updatePointCloud(forGroundCloud, "ground Cloud");
 	dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);

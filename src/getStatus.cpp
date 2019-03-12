@@ -188,6 +188,11 @@ void UpdateStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGro
 	  }
 	}
 }
+union dataUnion
+{
+	uint8_t dataChar[4];
+	double data;
+};
 
 void SendDatas(serial::Serial *my_serial, int status, double frountData, double lateralDatas)
 {
@@ -207,31 +212,31 @@ void SendDatas(serial::Serial *my_serial, int status, double frountData, double 
 	switch (status)
 	{
 	case 1:
-		allDatas[2] = 0;
+		allDatas[2] = '0';
 		break;
 	case 2:
-		allDatas[2] = 1;
+		allDatas[2] = '1';
 		break;
 	case 3:
-		allDatas[2] = 1;
+		allDatas[2] = '1';
 		break;
 	case 4:
-		allDatas[2] = 2;
+		allDatas[2] = '2';
 		break;
 	case 5:
-		allDatas[2] = 2;
+		allDatas[2] = '2';
 		break;
 	case 6:
-		allDatas[2] = 3;
+		allDatas[2] = '3';
 		break;
 	case 7:
-		allDatas[2] = 4;
+		allDatas[2] = '4';
 		break;
 	case 9:
-		allDatas[2] = 5;
+		allDatas[2] = '5';
 		break;
 	case 10:
-		allDatas[2] = 7;
+		allDatas[2] = '7';
 		break;
 	}
 	CopyData(frountUnion.dataChar, &allDatas[3], 4);

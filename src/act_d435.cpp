@@ -1551,15 +1551,12 @@ mb_cuda::thrustCloudT ActD435::pointsToPointCloud(const rs2::points& points)
 	{
 		p.x = ptr->x;
 		p.y = ptr->y;
-		if(status<4)
+		if(status<5)
 			p.z = ptr->z*1.02;
 		else
 			p.z = ptr->z;
-
-		
+	
 		ptr++;
 	}
-
-
 	return thrust_cloud;
 }
