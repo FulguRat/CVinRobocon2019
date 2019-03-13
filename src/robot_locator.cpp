@@ -32,6 +32,7 @@ dstViewer(new pcl::visualization::PCLVisualizer("Advanced Viewer"))
 
 
 	dstViewer->setBackgroundColor(0.259, 0.522, 0.957);
+    dstViewer->addPointCloud<pointType>(forGroundCloud, "ground Cloud");
     dstViewer->addPointCloud<pointType>(dstCloud, "Destination Cloud");
     dstViewer->addCoordinateSystem(0.2, "view point");
     dstViewer->initCameraParameters();
@@ -132,35 +133,18 @@ mb_cuda::thrustCloudT RobotLocator::updateCloud(void)
 
 void RobotLocator::preProcess(void)
 {
+	chrono::steady_clock::time_point start;
+	chrono::steady_clock::time_point stop;
+
+	
 	//-- Pass through filter
 	thrust::device_vector<mb_cuda::PointXYZRGB> device_cloud;
 	mb_cuda::host_to_device(sourceThrust, device_cloud);
 
 	thrust::device_vector<mb_cuda::PointXYZRGB> d_filtered_cloud;
-	if(status <= 4)
-	{
-		if (!mode)
-		{
-			/*if (status == PASSING_DUNE)
-				groundROI = { -1.5,-0.5,0.5,1.0 };
-			else*/
-			{
-				groundROI = { -0.5,0.5,0,1.0 };
-			}
-		}
-		else
-		{
-			/*if (status == PASSING_DUNE)
-				groundROI = { 0.5,1.5,0.5,1.0 };
-			else
-			*/
-			{
-				groundROI = { -0.5,0.5,0,1.0 };
-			}
-		}
 
-	}
-
+	groundROI = { -0.5,0.5,0,1.0 };
+	
 
 	pcl::PassThrough<pointType> pass;
 	if (status <= 4)
@@ -168,6 +152,10 @@ void RobotLocator::preProcess(void)
 		mb_cuda::pass_through_filter(device_cloud, d_filtered_cloud, 'z', 0.0f, 2.0f);
 
 		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'x', -1.0f, 1.0f);
+		//-- Down sampling
+		float leafSize = 0.02;
+		mb_cuda::removeNansOrIfs(d_filtered_cloud, d_filtered_cloud);
+		mb_cuda::voxel_grid_filter(d_filtered_cloud, d_filtered_cloud, leafSize);
 	}
 	else if (status == CLIMBING_MOUNTAIN)
 	{
@@ -183,23 +171,19 @@ void RobotLocator::preProcess(void)
 
 		mb_cuda::pass_through_filter(device_cloud, d_filtered_cloud, 'y', 0.0f, 1.5f);
 
-		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'x', -1.0f, -1.0f);
+		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'x', -1.0f, 1.0f);
 
 		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'z', 0.0f, 2.0f);
 
 	}
 
-	//-- Down sampling
-	float leafSize = 0.02;
-	mb_cuda::removeNansOrIfs(d_filtered_cloud, d_filtered_cloud);
-	mb_cuda::voxel_grid_filter(d_filtered_cloud, d_filtered_cloud, leafSize);
 
 	//--To filteredCloud
 	thrust::host_vector<mb_cuda::PointXYZRGB> hostCloud;
 
 	//for ground point
 	thrust::device_vector<mb_cuda::PointXYZRGB> forThrustGroundCloud;
-
+start = chrono::steady_clock::now();
 	if(status <= 4)
 	{
 		mb_cuda::device_to_host(d_filtered_cloud, hostCloud);
@@ -226,6 +210,9 @@ void RobotLocator::preProcess(void)
 		mb_cuda::device_to_host(d_filtered_cloud, hostCloud);
 		mb_cuda::thrust_to_pcl(hostCloud, forGroundCloud);
 	}
+	stop = chrono::steady_clock::now();
+	auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
+cout << "transform data: " << double(totalTime.count()) / 1000.0f << endl;
 }
 
 bool RobotLocator::extractGroundCoeff(pPointCloud cloud)
@@ -273,14 +260,14 @@ bool RobotLocator::extractGroundCoeff(pPointCloud cloud)
 		thisD435->groundCoeff[3] = coefficients->values[3];
 		if(status == BEFORE_GRASSLAND_STAGE_1)
 		{
-			if(thisD435->groundCoeff[3] < 0.48)
+			if(thisD435->groundCoeff[3] < 0.50)
 				thisD435->groundCoeff[3] += 0.1;
 		}
 	}
 	for (int i = 0; i < inliers->indices.size(); i++)
 	{
 		cloud->points[inliers->indices[i]].r = 251;
-		cloud->points[inliers->indices[i]].g = 188;
+		cloud->points[inliers->indices[i]].g = 255;
 		cloud->points[inliers->indices[i]].b = 5;
 	}
 	return segmentStatus;
@@ -624,6 +611,8 @@ void RobotLocator::locateBeforeDuneStage1(void)
 #endif // DEBUG
 
 	extractPlaneWithinROI(verticalCloud, leftFenseROImax, inliers, coefficients);
+//cout<<verticalCloud->points.size()<<endl;
+//cout<<"false"<<endl;
 	if (!segmentStatus)
 	{
 		return;
@@ -640,6 +629,7 @@ void RobotLocator::locateBeforeDuneStage1(void)
 	start = chrono::steady_clock::now();
 #endif // DEBUG
 	extractPlaneWithinROI(verticalCloud, leftFenseROImin, inliers, coefficients);
+	leftFenseROImin = updateObjectROI(verticalCloud, inliers, 0.3, 0.3, 0.1, 0.1, true, false, leftFenseROImin);
 	if (!segmentStatus)
 	{
 		return;
@@ -1142,6 +1132,7 @@ void RobotLocator::locatePassingGrasslandStage1(void)
 
 void RobotLocator::locatePassingGrasslandStage2(void)
 {
+
 	extractGroundCoeff(forGroundCloud);
 	rotatePointCloudToHorizontal(filteredCloud);
 	thisD435->imgProcess();
@@ -1203,15 +1194,24 @@ void RobotLocator::locateUnderMountain(void)
 
 void RobotLocator::locateClimbingMountain(void)
 {
-	extractGroundCoeff(forGroundCloud);
-	rotatePointCloudToHorizontal(filteredCloud);
-	
-	thisD435->imgProcess();
-	int stageJudge = thisD435->ClimbingMountainStageJudge();
+	chrono::steady_clock::time_point start;
+	chrono::steady_clock::time_point stop;
 
-	thisD435->FindHoughLineCross();
-	frontFenseDist = thisD435->GetDepth(thisD435->lineCross, thisD435->lineCrossIn3D);
+	start = chrono::steady_clock::now();
+	extractGroundCoeff(forGroundCloud);
+		stop = chrono::steady_clock::now();
+	auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
+	cout << "before opencv: " << double(totalTime.count()) / 1000.0f << endl;
+	rotatePointCloudToHorizontal(filteredCloud);
+
+	thisD435->imgProcess();
+
+	int stageJudge = thisD435->ClimbingMountainStageJudge();
 	
+	thisD435->FindHoughLineCross();
+
+	frontFenseDist = thisD435->GetDepth(thisD435->lineCross, thisD435->lineCrossIn3D);
+
 	dbStatus = 5;
 	switch (stageJudge)
 	{
@@ -1246,13 +1246,15 @@ void RobotLocator::locateClimbingMountain(void)
 
 	if (nextStatusCounter >= 2) { status++; thisD435->status++; }
 
-#ifdef DEBUG
+#ifndef DEBUG
+
 	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 	cout << "frontFenseDist:" << frontFenseDist << " peakDist:" << peakDist << endl;
 
 	cout << "climbStage: "<< stageJudge << " status: " << status << "\n" << endl;
 #endif
+
 }
 void RobotLocator::locateReachingMountain(void)
 {

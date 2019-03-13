@@ -194,7 +194,7 @@ union dataUnion
 	double data;
 };
 
-void SendDatas(serial::Serial *my_serial, int status, double frountData, double lateralDatas)
+void SendDatas(serial::Serial *my_serial, int status, float frountData, float lateralDatas)
 {
 	dataUnion frountUnion;
 	dataUnion lateralUnion;

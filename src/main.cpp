@@ -33,7 +33,7 @@ int main(int argc, char* argv[])
 
 
 	distancefilter.initKalmanFilter(2, 1, (cv::Mat_<float>(2, 2) << 1, 0.3, 0, 1), (cv::Mat_<float>(1, 2) << 1, 0), 1e-5, 1e-2, 0.1);
-#ifdef __linux__
+#ifndef __linux__
 	std::cout << "[INFO]" << "serial init...\n";
 	serial::Serial my_serial("/dev/ttyTHS2", 115200, serial::Timeout::simpleTimeout(2));
 	if(my_serial.isOpen())
@@ -48,10 +48,7 @@ int main(int argc, char* argv[])
         std::cout << "[INFO]" << "GetStatus:\n";
         GetStatus(serialPtr,&fajLocator.status,&mode);
         
-		if (fajLocator.status <= BEFORE_GRASSLAND_STAGE_1)
-			fajD435.status = BEFORE_GRASSLAND_STAGE_1;
-		else
-			fajD435.status = fajLocator.status;
+		
     	// openVINO init
     	std::cout << "openvino init\n";
     	TensorRT tensorRT(argc,argv,mode);
@@ -98,6 +95,10 @@ int main(int argc, char* argv[])
 		{
 			case STARTUP_INITIAL:
 				fajLocator.status = CLIMBING_MOUNTAIN;
+				if (fajLocator.status <= BEFORE_GRASSLAND_STAGE_1)
+					fajD435.status = BEFORE_GRASSLAND_STAGE_1;
+				else
+					fajD435.status = fajLocator.status;
 				break;
 
 			case BEFORE_DUNE_STAGE_1:
@@ -126,13 +127,13 @@ int main(int argc, char* argv[])
 
 			case UNDER_MOUNTAIN:
 				fajLocator.locateUnderMountain();
-#ifdef __linux__
+#ifndef __linux__
 				UpdateStatus(serialPtr,&fajLocator.status,&mode);
 #endif
 				break;
 
 			case BONE_RECOGNITION:
-#ifdef __linux__		
+#ifndef __linux__		
 				tensorRT.srcImg = mvCamera.getImage();
 				//cap >> tensorRT.srcImg;
 				//cv::imshow("src",tensorRT.srcImg);
@@ -168,7 +169,7 @@ int main(int argc, char* argv[])
 		//	xdistance=distancefilter.predictAndCorrect(Mat_<float>(1, 1)<<fajLocator.diatancemeasurement).at<float>(0,0);
 		if (fajLocator.status!=0&& fajLocator.status!=8)
 		{
-			SendDatas(serialPtr, dbStatus, frontDist, lateralDist);
+			//SendDatas(serialPtr, dbStatus, frontDist, lateralDist);
 		}
 #ifdef DEBUG
 		cout << "total 4 " << double(totalTime.count()) / 1000.0f << " " << double(totalTime1.count()) / 1000.0f << " " << double(totalTime2.count()) / 1000.0f << " " << double(totalTime3.count()) / 1000.0f << endl;
