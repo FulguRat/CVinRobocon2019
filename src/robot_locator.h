@@ -58,8 +58,9 @@ public:
 
 	void init(ActD435& d435);
 
-	mb_cuda::thrustCloudT updateCloud(void);
-
+	void updateCloud(void);
+	void updateSrcCloud(void);
+	void cloudPointPreprocess(void);
 	void preProcess(void);
 
 	void extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi,
@@ -137,8 +138,6 @@ private:
 
 
 	float angle;
-
-	mb_cuda::thrustCloudT sourceThrust;
 
 
 	pcl::visualization::PCLVisualizer::Ptr dstViewer;

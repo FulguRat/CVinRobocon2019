@@ -10,6 +10,8 @@
 #include <pcl/visualization/cloud_viewer.h>
 #include <opencv2/opencv.hpp>
 #include <Eigen/Dense>
+#include <mutex>
+#include <queue>
 
 #include "mb_cuda/common/point_types.h"
 #include "mb_cuda/io/pcl_thrust.h"
@@ -128,7 +130,7 @@ public:
 	~ActD435();
 
 	void init(void);
-	mb_cuda::thrustCloudT update(void);
+	void update(void);
 	void imgProcess(void);
 	void FillHoles(cv::Mat& src);
 	//mode 0 ����������� 1 ����˳�����
@@ -142,6 +144,7 @@ public:
 	int ClimbingMountainStageJudge(void);
 	bool MatchLine(vector<cv::Vec4i>& src, vector<cv::Vec4i>& dst, float angleThresh, float minDistThresh, float maxDistThresh);
 	void FindHoughLineCross(void);
+	void FindVerticalHoughLine(cv::Mat& src);
 	void FindLineCrossCenter(float angleThresh, float minDistThresh, float maxDistThresh);
 	void FindHorizonalHoughLine(cv::Mat& src);
 	float GetDepth(cv::Point2f& pt, cv::Point3f& pt1);
@@ -157,11 +160,17 @@ private:
 
 	//-- For point cloud without color
 	mb_cuda::thrustCloudT pointsToPointCloud(const rs2::points& points);
-
 public:
+	std::mutex mutex1;
+	std::mutex mutex2;
+	std::mutex mutex3;
 	vector<cv::Vec4i> filterLine;
 	vector<float> groundCoeff;
-	Eigen::Matrix3f RotatedMatrix;
+	queue<cv::Mat> srcImageQueue;
+	queue<vector<float>> groundCoffQueue;
+	queue<Eigen::Matrix3f> RotatedMatrix;
+	cv::Point2f linePt1;
+	cv::Point2f linePt2;
 	cv::Point2f pillarLeftUpPt;
 	cv::Point2f center1 = cv::Point2f(0, 0);
 	cv::Point2f center2 = cv::Point2f(0, 0);
@@ -176,6 +185,9 @@ public:
 
 	cv::Point seedPoint;
 
+	bool initFlag = true;
+	bool pointCloudUpdateFlag = false;
+	bool lineFoundFlag;
 	float nowXpos;
 	float nowZpos;
 	float angle;
@@ -188,10 +200,10 @@ public:
 	float pillarHeight;
 	unsigned int status = BEFORE_GRASSLAND_STAGE_1;
 
-	mb_cuda::thrustCloudT	thrustcloud;
-
+	mb_cuda::thrustCloudT sourceThrust;
 private:
 
+	
 	rs2::pointcloud  rs2Cloud;
 	rs2::points      rs2Points;
 
@@ -227,6 +239,7 @@ private:
 	cv::Mat channelA;
 
 	cv::Mat grayImage;
+	cv::Mat LABImage;
 	vector<cv::Mat> channels;
 	cv::Mat srcImage;
 	cv::Mat maskImage;

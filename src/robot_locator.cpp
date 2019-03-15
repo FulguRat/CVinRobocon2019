@@ -74,8 +74,8 @@ void RobotLocator::init(ActD435& d435)
 	const int cycleNum = 10;
 	for (int i = 0; i < cycleNum; i++)
 	{
-		sourceThrust = thisD435->update();
-		mb_cuda::thrust_to_pcl(sourceThrust, srcCloud);
+		thisD435->update();
+		mb_cuda::thrust_to_pcl(thisD435->sourceThrust, srcCloud);
 
 		pcl::PassThrough<pointType> pass;
 		pass.setInputCloud(srcCloud);
@@ -122,15 +122,50 @@ void RobotLocator::init(ActD435& d435)
 		<< groundCoeff->values[3] << endl;
 
 	cout << "Done initialization." << endl;
+	thisD435->initFlag = false;
 }
 
-mb_cuda::thrustCloudT RobotLocator::updateCloud(void)
+void RobotLocator::updateCloud(void)
 {
 	//-- copy the pointer to srcCloud
-	sourceThrust = thisD435->update();
-	return sourceThrust;
+	thisD435->update();
 }
+void RobotLocator::updateSrcCloud(void)
+{
+	chrono::steady_clock::time_point start;
+	chrono::steady_clock::time_point stop;
+	int count = 0; 
+	while (true)
+	{
+		count ++;
+		start = chrono::steady_clock::now();
+		updateCloud();
+		stop = chrono::steady_clock::now();
+		auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
+		cout << "thread1 Time: " << double(totalTime.count()) / 1000.0f << endl;
+		cout << "thread1 Cnt: " << count << endl;
+	}
+	
+}
+void RobotLocator::cloudPointPreprocess(void)
+{
+	chrono::steady_clock::time_point start;
+	chrono::steady_clock::time_point stop;
+	int count = 0; 
+	while (true)
+	{
+		count ++;
+		start = chrono::steady_clock::now();
+		preProcess();	
+		extractGroundCoeff(forGroundCloud);
+		rotatePointCloudToHorizontal(forGroundCloud);
+		stop = chrono::steady_clock::now();
+		auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
+		cout << "thread2 Time: : " << double(totalTime.count()) / 1000.0f << endl;
+		cout << "thread2 Cnt: " << count << endl;
+	}
 
+}
 void RobotLocator::preProcess(void)
 {
 	chrono::steady_clock::time_point start;
@@ -139,23 +174,26 @@ void RobotLocator::preProcess(void)
 	
 	//-- Pass through filter
 	thrust::device_vector<mb_cuda::PointXYZRGB> device_cloud;
-	mb_cuda::host_to_device(sourceThrust, device_cloud);
-
+	while(!thisD435->pointCloudUpdateFlag)
+	{
+	}
+	thisD435->mutex2.lock();
+	mb_cuda::host_to_device(thisD435->sourceThrust, device_cloud);
+	thisD435->pointCloudUpdateFlag = false;
+	thisD435->mutex2.unlock();
 	thrust::device_vector<mb_cuda::PointXYZRGB> d_filtered_cloud;
 
 	groundROI = { -0.5,0.5,0,1.0 };
 	
-
+	start = chrono::steady_clock::now();
 	pcl::PassThrough<pointType> pass;
 	if (status <= 4)
 	{
 		mb_cuda::pass_through_filter(device_cloud, d_filtered_cloud, 'z', 0.0f, 2.0f);
 
 		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'x', -1.0f, 1.0f);
-		//-- Down sampling
-		float leafSize = 0.02;
-		mb_cuda::removeNansOrIfs(d_filtered_cloud, d_filtered_cloud);
-		mb_cuda::voxel_grid_filter(d_filtered_cloud, d_filtered_cloud, leafSize);
+		
+
 	}
 	else if (status == CLIMBING_MOUNTAIN)
 	{
@@ -168,22 +206,25 @@ void RobotLocator::preProcess(void)
 	}
 	else
 	{
+		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'z', 0.0f, 1.5f);
+
+		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'x', -1.0f, 1.0f);		
 
 		mb_cuda::pass_through_filter(device_cloud, d_filtered_cloud, 'y', 0.0f, 1.5f);
 
-		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'x', -1.0f, 1.0f);
-
-		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'z', 0.0f, 2.0f);
-
 	}
+	//-- Down sampling
 
+	float leafSize = 0.025;
+	mb_cuda::removeNansOrIfs(d_filtered_cloud, d_filtered_cloud);
+	mb_cuda::voxel_grid_filter(d_filtered_cloud, d_filtered_cloud, leafSize);
 
 	//--To filteredCloud
 	thrust::host_vector<mb_cuda::PointXYZRGB> hostCloud;
 
 	//for ground point
 	thrust::device_vector<mb_cuda::PointXYZRGB> forThrustGroundCloud;
-start = chrono::steady_clock::now();
+
 	if(status <= 4)
 	{
 		mb_cuda::device_to_host(d_filtered_cloud, hostCloud);
@@ -212,12 +253,12 @@ start = chrono::steady_clock::now();
 	}
 	stop = chrono::steady_clock::now();
 	auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
-cout << "transform data: " << double(totalTime.count()) / 1000.0f << endl;
+	cout << "transform data: " << double(totalTime.count()) / 1000.0f << endl;
+
 }
 
 bool RobotLocator::extractGroundCoeff(pPointCloud cloud)
 {
-	dstCloud->clear();
 	//-- Plane model segmentation
 	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
 	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
@@ -263,13 +304,18 @@ bool RobotLocator::extractGroundCoeff(pPointCloud cloud)
 			if(thisD435->groundCoeff[3] < 0.50)
 				thisD435->groundCoeff[3] += 0.1;
 		}
+		thisD435->mutex3.lock();
+		thisD435->groundCoffQueue.push(thisD435->groundCoeff);
+		thisD435->mutex3.unlock();
 	}
+#ifdef DEBUG
 	for (int i = 0; i < inliers->indices.size(); i++)
 	{
 		cloud->points[inliers->indices[i]].r = 251;
 		cloud->points[inliers->indices[i]].g = 255;
 		cloud->points[inliers->indices[i]].b = 5;
 	}
+#endif
 	return segmentStatus;
 }
 
@@ -289,7 +335,14 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 		//-- Define the rotate transform
 		Eigen::Affine3f rotateToXZPlane = Eigen::Affine3f::Identity();
 		Eigen::AngleAxisf v1(angle, -Axis);
-		thisD435->RotatedMatrix = v1.toRotationMatrix();
+		Eigen::Matrix3f RotatedMatrix = v1.toRotationMatrix();
+		while(thisD435->RotatedMatrix.size() != 0)
+		{
+		}
+		thisD435->mutex3.lock();
+		thisD435->RotatedMatrix.push(RotatedMatrix);
+		thisD435->mutex3.unlock();
+#ifndef DEBUG
 		rotateToXZPlane.rotate(v1);
 		pcl::transformPointCloud(*cloud, *cloud, rotateToXZPlane);
 
@@ -299,6 +352,7 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 		groundCoeffRotated->values[1] = groundCoeffRotatedVec[1];
 		groundCoeffRotated->values[2] = groundCoeffRotatedVec[2];
 		groundCoeffRotated->values[3] = fabs(groundCoeff->values[3]) / vecNormal.norm();
+#endif
 	}
 	else 
 	{		
@@ -327,8 +381,6 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 		groundCoeffRotated->values[1] = groundCoeffRotatedVec[1];
 		groundCoeffRotated->values[2] = groundCoeffRotatedVec[2];
 		groundCoeffRotated->values[3] = fabs(groundCoeff->values[3]) / vecNormal.norm();
-
-
 	}
 
 
@@ -1046,50 +1098,64 @@ void RobotLocator::locatePassingDune(void)
 
 void RobotLocator::locateBeforeGrasslandStage1(void)
 {
-	extractGroundCoeff(forGroundCloud);
-	rotatePointCloudToHorizontal(filteredCloud);
 	thisD435->imgProcess();
 
 	thisD435->FindFenseCorner(HORIZONAL_FENSE, mode);
+	
+	while(thisD435->RotatedMatrix.size() == 0)
+	{
+	}
+	thisD435->mutex3.lock();
+	cout << "got coeff" << endl;
+	thisD435->GetyawAngle(thisD435->linePt1,thisD435->linePt2,HORIZONAL_FENSE);
 	frontFenseDist = thisD435->GetDepth(thisD435->fenseCorner, thisD435->fenseCornerIn3D);
-
+	thisD435->groundCoffQueue.pop();
+	thisD435->RotatedMatrix.pop();
+	thisD435->mutex3.unlock();
 	besideFenseDist = mode == LEFT_MODE ? fenseCorner2fenseDist - thisD435->nowXpos : fenseCorner2fenseDist + thisD435->nowXpos;
 
 	lateralDist = besideFenseDist;
 	frontDist = frontFenseDist + carWidth;
 
 	dbStatus = 2;
-	if (besideFenseDist < 1550) { nextStatusCounter++; }
+	if (besideFenseDist < 1600) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
 	if (nextStatusCounter >= 2) { status++; thisD435->status = status;}
 	
 #ifdef DEBUG
-	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
-	dstViewer->spinOnce(1);
+	//dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
+	//dstViewer->spinOnce(1);
 	cout << "status: " << status << "\n" << endl;
 	cout << "front fense distance  " << frontFenseDist << "  besideFenseDist " << besideFenseDist << endl;
+	cout << thisD435->srcImageQueue.size() << endl;
+	cout << thisD435->RotatedMatrix.size() << endl;
 #endif
 }
 void RobotLocator::locateBeforeGrasslandStage2(void)
 {
-	extractGroundCoeff(forGroundCloud);
-	rotatePointCloudToHorizontal(filteredCloud);
 	thisD435->imgProcess();
 
-	if (thisD435->pillarStatus)
-	{
-		secondRopeDist = thisD435->GetDepth(thisD435->center2, thisD435->center2In3D);
 
-		if ((1 - 2 * mode) * thisD435->nowXpos + 400 < 0)
-		{
-			besideFenseDist = mode == LEFT_MODE ? (pillarRadius - thisD435->nowXpos) : (pillarRadius + thisD435->nowXpos);
-		}
-		else
-		{
-			besideFenseDist = mode == LEFT_MODE ? (fenseCorner2fenseDist - pillarRadius - thisD435->nowXpos) : (fenseCorner2fenseDist - pillarRadius + thisD435->nowXpos);
-		}
+	while(thisD435->RotatedMatrix.size() == 0)
+	{
 	}
+	thisD435->mutex3.lock();
+	cout << "got coeff" << endl;
+	thisD435->GetyawAngle(thisD435->linePt1,thisD435->linePt2,VERTICAL_FENSE);
+	secondRopeDist = thisD435->GetDepth(thisD435->center2, thisD435->center2In3D);
+	thisD435->groundCoffQueue.pop();
+	thisD435->RotatedMatrix.pop();
+	thisD435->mutex3.unlock();
+	if ((1 - 2 * mode) * thisD435->nowXpos + 400 < 0)
+	{
+		besideFenseDist = mode == LEFT_MODE ? (pillarRadius - thisD435->nowXpos) : (pillarRadius + thisD435->nowXpos);
+	}
+	else
+	{
+		besideFenseDist = mode == LEFT_MODE ? (fenseCorner2fenseDist - pillarRadius - thisD435->nowXpos) : (fenseCorner2fenseDist - pillarRadius + thisD435->nowXpos);
+	}
+
 	lateralDist = besideFenseDist;
 	frontDist = secondRopeDist;
 
@@ -1097,18 +1163,20 @@ void RobotLocator::locateBeforeGrasslandStage2(void)
 	if (secondRopeDist < 700 && thisD435->pillarStatus != 1) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
-	if (nextStatusCounter >= 2) { status ++; thisD435->status ++; colorFrameRoi = mode == LEFT_MODE ? rightRoi : leftRoi;}
+	//if (nextStatusCounter >= 2) { status ++; thisD435->status ++; colorFrameRoi = mode == LEFT_MODE ? rightRoi : leftRoi;}
 #ifdef DEBUG
-	cout << "secondRopeDist: " << secondRopeDist << " besideFenseDist: " << besideFenseDist << endl;
 	cout << "status: " << status << "\n" << endl;
-	dstViewer->updatePointCloud(filteredCloud, "Destination Cloud");
-	dstViewer->spinOnce(1);
+	cout << "secondRopeDist: " << secondRopeDist << " besideFenseDist: " << besideFenseDist << endl;
+	cout << thisD435->srcImageQueue.size() << endl;
+	cout << thisD435->RotatedMatrix.size() << endl;
+	//dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
+	//dstViewer->spinOnce(1);
 #endif // DEBUG
 }
 void RobotLocator::locatePassingGrasslandStage1(void)
 {
 	extractGroundCoeff(forGroundCloud);
-	rotatePointCloudToHorizontal(filteredCloud);
+	rotatePointCloudToHorizontal(forGroundCloud);
 	thisD435->imgProcess();
 
 	thisD435->FindLineCrossCenter(10.0, 1.0, 40.0);
@@ -1134,7 +1202,7 @@ void RobotLocator::locatePassingGrasslandStage2(void)
 {
 
 	extractGroundCoeff(forGroundCloud);
-	rotatePointCloudToHorizontal(filteredCloud);
+	rotatePointCloudToHorizontal(forGroundCloud);
 	thisD435->imgProcess();
 
 	thisD435->FindLineEnd();
@@ -1156,13 +1224,19 @@ void RobotLocator::locatePassingGrasslandStage2(void)
 
 void RobotLocator::locateUnderMountain(void)
 {
-	extractGroundCoeff(forGroundCloud);
-	rotatePointCloudToHorizontal(filteredCloud);
 	thisD435->imgProcess();
 
 	thisD435->FindLineEnd();
-
+	while(thisD435->RotatedMatrix.size() == 0)
+	{
+	}
+	thisD435->mutex3.lock();
+	cout << "got coeff" << endl;
+	thisD435->GetyawAngle(thisD435->linePt1,thisD435->linePt2,HORIZONAL_FENSE);
 	frontFenseDist = thisD435->GetDepth(thisD435->lineEnd, thisD435->lineEndIn3D) + carWidth;
+	thisD435->groundCoffQueue.pop();
+	thisD435->RotatedMatrix.pop();
+	thisD435->mutex3.unlock();
 	besideFenseDist = mode == LEFT_MODE ? lineEnd2BesidefenseDist - thisD435->nowXpos : lineEnd2BesidefenseDist + thisD435->nowXpos;
 
 	if (frontFenseDist > lineEnd2secondRopeDist)
@@ -1197,21 +1271,21 @@ void RobotLocator::locateClimbingMountain(void)
 	chrono::steady_clock::time_point start;
 	chrono::steady_clock::time_point stop;
 
-	start = chrono::steady_clock::now();
-	extractGroundCoeff(forGroundCloud);
-		stop = chrono::steady_clock::now();
-	auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
-	cout << "before opencv: " << double(totalTime.count()) / 1000.0f << endl;
-	rotatePointCloudToHorizontal(filteredCloud);
-
 	thisD435->imgProcess();
 
 	int stageJudge = thisD435->ClimbingMountainStageJudge();
 	
 	thisD435->FindHoughLineCross();
-
+	while(thisD435->RotatedMatrix.size() == 0)
+	{
+	}
+	thisD435->mutex3.lock();
+	cout << "got coeff" << endl;
+	thisD435->GetyawAngle(thisD435->linePt1,thisD435->linePt2,HORIZONAL_FENSE);
 	frontFenseDist = thisD435->GetDepth(thisD435->lineCross, thisD435->lineCrossIn3D);
-
+	thisD435->groundCoffQueue.pop();
+	thisD435->RotatedMatrix.pop();
+	thisD435->mutex3.unlock();
 	dbStatus = 5;
 	switch (stageJudge)
 	{
@@ -1258,13 +1332,19 @@ void RobotLocator::locateClimbingMountain(void)
 }
 void RobotLocator::locateReachingMountain(void)
 {
-	extractGroundCoeff(forGroundCloud);
-	rotatePointCloudToHorizontal(filteredCloud);
 	thisD435->imgProcess();
 
 	thisD435->FindHoughLineCross();
+	while(thisD435->RotatedMatrix.size() == 0)
+	{
+	}
+	thisD435->mutex3.lock();
+	cout << "got coeff" << endl;
+	thisD435->GetyawAngle(thisD435->linePt1,thisD435->linePt2,HORIZONAL_FENSE);
 	frontFenseDist = thisD435->GetDepth(thisD435->lineCross, thisD435->lineCrossIn3D);
-
+	thisD435->groundCoffQueue.pop();
+	thisD435->RotatedMatrix.pop();
+	thisD435->mutex3.unlock();
 	if (thisD435->filterLine.size() == 2 && (thisD435->nowXpos * (2 * mode - 1)) < 0)
 		peakDist = mode == LEFT_MODE ? thisD435->nowXpos : -thisD435->nowXpos;
 	else
