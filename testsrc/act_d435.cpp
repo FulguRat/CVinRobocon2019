@@ -1,8 +1,8 @@
 #include "act_d435.h"
 
 roiFlag colorFrameRoi = midRoi;
-//int mode = LEFT_MODE;
 int mode = RIGHT_MODE;
+//int mode = RIGHT_MODE;
 float frontDist;
 float lateralDist;
 int dbStatus = 0;
@@ -33,6 +33,8 @@ void ActD435::init(void)
 		0.0f, argsRight.fy, argsRight.cy, \
 		0.0f, 0.0f, 1.0f);
 	//-- Add desired streams to configuration
+	cfg.enable_stream(RS2_STREAM_DEPTH, 640, 480, RS2_FORMAT_Z16, 60);
+	cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 60);
 
 	intrinsicMatrixLeft = (cv::Mat_<float>(3, 3) << argsLeft.fx, argsLeft.skew, argsLeft.cx, \
 		0.0f, argsLeft.fy, argsLeft.cy, \
@@ -76,7 +78,6 @@ void ActD435::update(void)
 	//-- Wait for the next set of frames from the camera
 	frameSet = pipe.wait_for_frames();
 
-
 	//-- Get processed aligned frame
 	//alignedFrameSet = align.process(frameSet);
 
@@ -87,29 +88,14 @@ void ActD435::update(void)
 	//-- For not align
 	rs2::video_frame colorFrame = frameSet.get_color_frame();
 	rs2::depth_frame alignedDepthFrame = frameSet.get_depth_frame();
-	if (time == 0)
-	{
-		rs2::stream_profile dprofile = alignedDepthFrame.get_profile();
-		rs2::stream_profile cprofile = colorFrame.get_profile();
-		
-		rs2::video_stream_profile cvsprofile(cprofile);
-		color_intrin = cvsprofile.get_intrinsics();
 
-		rs2::video_stream_profile dvsprofile(dprofile);
-		depth_intrin = dvsprofile.get_intrinsics();
-
-		depth2color_extrin = dprofile.get_extrinsics_to(cprofile);
-		color2depth_extrin = cprofile.get_extrinsics_to(dprofile);
-		cout << "Get intrinics" << endl;
-		time++;
-	}
 	srcImage = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)colorFrame.get_data(), cv::Mat::AUTO_STEP);
-	data = (uint16_t*)alignedDepthFrame.get_data();
-	if(!initFlag && xkFlag)
+	if(!initFlag)
 	{
 		mutex1.lock();
 		srcImageQueue.push(srcImage);
 		mutex1.unlock();
+		cout << "once" << endl;
 	}
 
 	//-- Map Color texture to each point
@@ -117,14 +103,19 @@ void ActD435::update(void)
 
 	//-- Generate the pointcloud and texture mappings
 	rs2Points = rs2Cloud.calculate(alignedDepthFrame);
-	if(!xkFlag)
-		sourceThrust = pointsToPointCloud(rs2Points);
-	else
-		cloudByRS2 = pointsToPCLPointCloud(rs2Points);
+	while(pointCloudUpdateFlag)
+	{
+	}
+	mutex2.lock();
+	start = chrono::steady_clock::now();
+	sourceThrust = pointsToPointCloud(rs2Points);
+	if(!initFlag)
+		pointCloudUpdateFlag = true;
+	mutex2.unlock();
 	stop = chrono::steady_clock::now();
 	auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
-cout << "mode in actd435: " << mode << endl;
-	//cout << "update Time: : " << double(totalTime.count()) / 1000.0f << endl;
+	cout << "update Time: : " << double(totalTime.count()) / 1000.0f << endl;
+cout << "flag: " << pointCloudUpdateFlag << " "<< initFlag << endl;
 	// cout << double(totalTime.count()) / 1000.0f << endl;
 }
 void ActD435::imgProcess()
@@ -143,28 +134,12 @@ void ActD435::imgProcess()
 	cvWaitKey(1);
 	switch (status)
 	{
-		case PASSING_DUNE:
-		{
-			cv::cvtColor(srcImage, LABImage, CV_BGR2Lab);
-			cv::split(LABImage, channels);
-			cv::threshold(channels[2], channelB, 0, 255, CV_THRESH_BINARY | CV_THRESH_OTSU);
-
-			maskImage = channelB.clone();
-
-			FindHorizonalHoughLine(maskImage);
-			cv::split(srcImage, channels);
-			cv::threshold(channels[2], channelR, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU);
-			FillHoles(channelR);
-			maskImage = channelR.clone();
-		}
-		break;
 		case BEFORE_GRASSLAND_STAGE_1:
 		{
 			cv::split(tempSrc, channels);
 			channelR = channels[2].clone();
 
-			//cv::inRange(channelR, 0, 100, channelR);
-			cv::threshold(channelR, channelR, 0, 255, CV_THRESH_OTSU | CV_THRESH_BINARY_INV);
+			cv::inRange(channelR, 0, 100, channelR);
 			FillHoles(channelR);
 			maskImage = channelR.clone();		
 		}
@@ -174,7 +149,6 @@ void ActD435::imgProcess()
 		{
 			
 			cv::cvtColor(tempSrc, LABImage, CV_BGR2Lab);
-			cv::cvtColor(tempSrc, HSVImage, CV_BGR2HSV);
 			cv::split(LABImage, channels);
 
 			inRange(channels[1], 0, 149, channelA);
@@ -188,9 +162,11 @@ void ActD435::imgProcess()
 #endif // DEBUG
 			//GetyawAngle
 			pillarStatus = FindPillarCenter();
-			cv::threshold(channels[2], channelB, 0, 255, CV_THRESH_OTSU | CV_THRESH_BINARY);
-			grayImage = channelB.clone();
-			cv::imshow("gray", grayImage);
+			cv::cvtColor(tempSrc, grayImage, CV_BGR2GRAY);
+			cv::threshold(grayImage, grayImage, 100, 255, CV_THRESH_OTSU | CV_THRESH_BINARY_INV);
+			cv::imshow("binary", grayImage);
+			cvWaitKey(1);
+			start = chrono::steady_clock::now();
 			FindVerticalHoughLine(grayImage);
 
 		}
@@ -198,7 +174,7 @@ void ActD435::imgProcess()
 
 		case UNDER_MOUNTAIN:
 		{
-			cv::cvtColor(srcImage, grayImage, CV_BGR2GRAY);
+			cv::cvtColor(tempSrc, grayImage, CV_BGR2GRAY);
 			cv::threshold(grayImage, grayImage, 0, 255, CV_THRESH_OTSU | CV_THRESH_BINARY);
 			FillHoles(grayImage);
 			maskImage = grayImage.clone();
@@ -222,7 +198,7 @@ void ActD435::imgProcess()
 		{
 			cv::cvtColor(tempSrc, tempSrc, CV_BGR2Lab);
 			cv::split(tempSrc, channels);
-			if (mode == LEFT_MODE)
+			if (status == LEFT_MODE)
 			{
 				channelA = channels[1].clone();
 				cv::threshold(channelA, channelA, 0, 255, CV_THRESH_OTSU | CV_THRESH_BINARY);
@@ -417,43 +393,19 @@ void ActD435::FindFenseCorner(int fenseType, int mode)
 	{	
 		if (fenseType == HORIZONAL_FENSE)
 		{
-			fenseCorner = line[line.size() - 7];
-			if(line.size() > 150)
-			{
-				if(status == BEFORE_GRASSLAND_STAGE_1)
-				{
-					linePt1 = line[line.size() - 20];
-					linePt2 = line[line.size() - 150];
-				}			
-				
-				float k = (line[line.size() - 150].y - line[line.size() - 20].y) / (line[line.size() - 150].x - line[line.size() - 20].x);
-				float b = line[line.size() - 15].y - k * line[line.size() - 20].x;
-
-				fenseCorner.x = fenseCorner.x;
-				fenseCorner.y = k * fenseCorner.x + b;
-				
-			}
-			else
-			{
-				if(status == BEFORE_GRASSLAND_STAGE_1)
-				{
-					linePt1 = line[line.size() - 20];
-					linePt2 = line[0];
-				}
-				
-				float k = (line[0].y - line[line.size() - 20].y) / (line[0].x - line[line.size() - 20].x);
-				float b = line[0].y - k * line[0].x;
-
-				fenseCorner.x = fenseCorner.x;
-				fenseCorner.y = k * fenseCorner.x + b;
-			}
-			
+			linePt1 = line[line.size() - 20];
+			linePt2 = line[5];
 			lineFoundFlag = true;
-			//if(cameraYawAngle < -25.0f * CV_PI / 180.0f )
-				
-			//else
-				//fenseCorner = line[line.size() - 30 + 50 * mode - static_cast<int>(cameraYawAngle * 180 / CV_PI)];
+			if(cameraYawAngle < -25.0f * CV_PI / 180.0f )
+				fenseCorner = line[line.size() - 5];
+			else
+				fenseCorner = line[line.size() - 30 + 50 * mode - static_cast<int>(cameraYawAngle * 180 / CV_PI)];
 		}		
+		else
+		{
+			GetyawAngle(line[5], line[line.size() - 10], VERTICAL_FENSE);
+			fenseCorner = line[line.size() - 15];
+		}	
 	}
 	else
 	{
@@ -630,8 +582,6 @@ void ActD435::FindLineEnd(void)
 	vector<cv::Point2f> line;
 	int notFoundCnt = 0;
 	int begin = 0;
-	int lastBegin = 0;
-	int lastEnd = 0;
 	int end = 0;
 	int rows = maskImage.rows - 1;
 	uchar thresh = 0;
@@ -649,7 +599,6 @@ void ActD435::FindLineEnd(void)
 			int tempbegin = 0;
 			whitePixNumLast = whitePixNum;
 			whitePixNum = 0;
-			
 			uchar* data = maskImage.ptr<uchar>(rows--);
 			for (int cols = begin; cols > end; --cols)
 			{
@@ -676,16 +625,11 @@ void ActD435::FindLineEnd(void)
 
 						if (whitePixNum > thresh)
 						{
-							if (whitePixNum > 50 || (whitePixNum - whitePixNumLast >= 10 && whitePixNumLast != 0) || cols > lastBegin)
+							if (whitePixNum > 50 || (whitePixNum - whitePixNumLast >= 10 && whitePixNumLast != 0))
 							{
 								rows -= 20;
 								whitePixNum = whitePixNumLast;
 								break;
-							}
-							if (tempbegin > 590 && line.size() < 10)
-							{
-								whitePixNum = 0;
-								continue;
 							}
 							notFoundCnt = 0;				
 							line.push_back(cv::Point(tempbegin, rows));
@@ -704,8 +648,6 @@ void ActD435::FindLineEnd(void)
 				begin = 639;
 			if (end < 0)
 				end = 0;
-			lastBegin = tempbegin;
-			lastEnd = end + 20;
 		} while (notFoundCnt < 45 && rows > 1);
 	}
 	else
@@ -749,17 +691,12 @@ void ActD435::FindLineEnd(void)
 						if (whitePixNum > thresh)
 						{
 							notFoundCnt = 0;
-							if (whitePixNum > 50 || (whitePixNum - whitePixNumLast >= 10 && whitePixNumLast != 0) || cols < lastBegin)
+							if (whitePixNum > 50 || (whitePixNum - whitePixNumLast >= 10 && whitePixNumLast != 0))
 							{
 								rows -= 20;
 								whitePixNum = whitePixNumLast;
 								break;
-							}				
-							if (tempbegin < 50 && line.size() < 10)
-							{
-								whitePixNum = 0;
-								continue;
-							}
+							}								
 							line.push_back(cv::Point(tempbegin, rows));
 							begin = tempbegin - 20;
 							end = cols + 20;
@@ -776,8 +713,6 @@ void ActD435::FindLineEnd(void)
 				end = 639;
 			if (begin < 0)
 				begin = 0;
-			lastBegin = tempbegin;
-			lastEnd = end - 20;
 		} while (notFoundCnt < 45 && rows > 1);
 	}
 
@@ -1074,12 +1009,12 @@ void ActD435::FindHoughLineCross(void)
 }
 void ActD435::FindHorizonalHoughLine(cv::Mat& src)
 {
-	Canny(src, src, 80, 80 * 2);
+	Canny(maskImage, maskImage, 80, 80 * 2);
 
 	vector<cv::Vec4i> line;
 	vector<cv::Vec4i> filterLine;
 
-	cv::HoughLinesP(src, line, 1, CV_PI / 180, houghlineThresh, 10, 50);
+	cv::HoughLinesP(maskImage, line, 1, CV_PI / 180, houghlineThresh, 10, 30);
 
 	HoughLine horizonalHoughLine;;
 	HoughLine comparedHoughLine;
@@ -1102,7 +1037,7 @@ void ActD435::FindHorizonalHoughLine(cv::Mat& src)
 			comparedHoughLine.lineSlop = 0;
 			comparedHoughLine.lineAngle = 90;
 		}
-		if (comparedHoughLine.lineAngle > 35 && comparedHoughLine.lineSlop * (2 * mode - 1) < 0 || line[i][1] / 2 + line[i][3] / 2 < 150)
+		if (comparedHoughLine.lineAngle > 35)
 		{
 			continue;
 		}
@@ -1119,10 +1054,9 @@ void ActD435::FindHorizonalHoughLine(cv::Mat& src)
 	if (filterLine.size() > 0)
 	{
 		cv::Point pt1, pt2;
-		float b = filterLine[0][1] - horizonalHoughLine.lineSlop * filterLine[0][0];
-		b += 20;
-		pt1 = cv::Point(filterLine[0][0], horizonalHoughLine.lineSlop * filterLine[0][0] + b);
-		pt2 = cv::Point(filterLine[0][2], horizonalHoughLine.lineSlop * filterLine[0][2] + b);
+
+		pt1 = cv::Point(filterLine[0][0], filterLine[0][1]);
+		pt2 = cv::Point(filterLine[0][2], filterLine[0][3]);
 		linePt1 = pt1;
 		linePt2 = pt2;
 		lineFoundFlag = true;
@@ -1471,24 +1405,41 @@ cv::Point3f ActD435::GetIrCorrdinate(cv::Point2f pt)
 	double c = groundCoeff[2];
 	double d = groundCoeff[3] * 1000;
 
-	float depth_pixel[2] = { 0 };
-	float color_pixel[2] = { pt.x, pt.y };
-	float point[3] = { 0 };
+	cv::Mat_<float> RGBpixed;
+	RGBpixed = (cv::Mat_<float>(3, 1) << pt.x, pt.y, 1);
 
-	rs2_project_color_pixel_to_depth_pixel(depth_pixel, data, 0.001, 0.1, 2.5, &depth_intrin, &color_intrin, &color2depth_extrin, &depth2color_extrin, color_pixel);
+	cout << "pt: " << pt.x << " " << pt.y << endl;
+	float Zc = 0, Xir = 0, Yir = 0, Zir = 0, m = 0, n = 0, t = 0, C1 = 0, C2 = 0, C3 = 0;
+	cv::Mat_<float> C = rotationMatrix.inv() * (translationMatrix);
+	cv::Mat_<float> K = rotationMatrix.inv() * intrinsicMatrixLeft.inv() * (RGBpixed);
 
-	float depth = data[(int)depth_pixel[1] * depth_intrin.width + (int)depth_pixel[0]];
+	m = K.at<float>(0, 0);
+	n = K.at<float>(1, 0);
+	t = K.at<float>(2, 0);
 
-	rs2_deproject_pixel_to_point(point, &depth_intrin, depth_pixel, depth);
+	C1 = C.at<float>(0, 0);
+	C2 = C.at<float>(1, 0);
+	C3 = C.at<float>(2, 0);
 
-	Eigen::Vector3f point3D(point[0], point[1], point[2]);
+	Zc = (-d + (a * C1 + b * C2 + c * C3)) / ((a * m + b * n + c * t));
+
+	Xir = m * Zc - C1;
+	Yir = n * Zc - C2;
+	Zir = t * Zc - C3;
+	Eigen::Vector3f point3D(Xir, Yir, Zir);
 	point3D = RotatedMatrix.front() * point3D;
-
-	float Xir = 0, Yir = 0, Zir = 0;
 
 	Xir = point3D[0];
 	Yir = point3D[1];
 	Zir = point3D[2];
+#ifdef DEBUG
+	cout << "m: " << m << " n: " << n << " t: " << t << endl;
+	cout << "C1: " << C1 << " C2: " << C2 << " C3: " << C3 << endl;
+	cout << "angleAlpha: " << angleAlpha * 180 / CV_PI << endl;
+	cout << "groundCoeff: " << a << "\t" << b << "\t" << c << "\t" << d << endl;
+	cout << "IrCoorinate: " << Xir << "\t" << Yir << "\t" << Zir << endl;
+	cout << "Zc: " << Zc << "\tZir: " << Zir << endl;
+#endif // DEBUG
 
 	return cv::Point3f(Xir, Yir, Zir);
 }
@@ -1549,8 +1500,6 @@ float ActD435::GetyawAngle(const cv::Point2f& pt1,const cv::Point2f& pt2, int fe
 	else
 		rotatedAngle = acos(-x / Vec.norm());
 	cameraYawAngle = -rotatedAngle + CV_PI / 2;
-	if(status == PASSING_DUNE)
-		cameraYawAngle += (2 * mode - 1) * 45 * CV_PI / 180;
 #ifdef DEBUG
 	cout << "cameraYawAngle: " << cameraYawAngle * 180 / CV_PI << endl;
 #endif // DEBUG
@@ -1684,38 +1633,12 @@ mb_cuda::thrustCloudT ActD435::pointsToPointCloud(const rs2::points& points)
 	{
 		p.x = ptr->x;
 		p.y = ptr->y;
-		p.z = ptr->z*1.015;
+		if(status<5)
+			p.z = ptr->z*1.02;
+		else
+			p.z = ptr->z;
 	
 		ptr++;
 	}
 	return thrust_cloud;
-}
-pPointCloud ActD435::pointsToPCLPointCloud(const rs2::points& points)
-{
-	pPointCloud cloud(new pointCloud);
-
-	auto sp = points.get_profile().as<rs2::video_stream_profile>();
-	cloud->width = sp.width();
-	cloud->height = sp.height();
-	cloud->is_dense = false;
-
-	int count = 0;
-	auto ptr = points.get_vertices();
-
-	for (int i = 0;i < points.size();++i)
-	{	
-		if(ptr->z > 0.0 && ptr->z < 1.5 && ptr->x > -0.5 && ptr->x < 0.5 && ptr->y > 0.1)
-		{
-			count++;
-			pointType point;
-			point.x = ptr->x;
-			point.y = ptr->y;
-			point.z = ptr->z - 0.0042;
-			cloud->points.push_back(point);
-		}
-
-		ptr++;
-	}
-	cout << "count: " << count << endl;
-	return cloud;
 }

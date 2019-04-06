@@ -381,7 +381,7 @@ namespace mb_cuda {
     int BLOCK_SIZE=16;
     dim3 threadsPerBlock(16,16);
     int numBlocks= len/(BLOCK_SIZE*BLOCK_SIZE) + ((len % (BLOCK_SIZE*BLOCK_SIZE))==0 ? 0 : 1);
-    std::cout<<"num blocks: "<<numBlocks<<std::endl;
+   // std::cout<<"num blocks: "<<numBlocks<<std::endl;
 
     compute_centroid_kernel <<<numBlocks,BLOCK_SIZE*BLOCK_SIZE>>> (voxel_indices_array_ptr,
                                                                    len,

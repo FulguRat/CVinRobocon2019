@@ -13,7 +13,6 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/voxel_grid.h>
-#include <pcl/filters/approximate_voxel_grid.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/sample_consensus/method_types.h>
@@ -63,13 +62,14 @@ public:
 	void updateSrcCloud(void);
 	void cloudPointPreprocess(void);
 	void preProcess(void);
+	void getVerticalNormal(void);
 
 	void extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi,
 		pcl::PointIndices::Ptr indices, pcl::ModelCoefficients::Ptr coefficients);
 
 	bool extractGroundCoeff(pPointCloud cloud);
 
-	pPointCloud rotatePointCloudToHorizontal(pPointCloud cloud);
+	void rotatePointCloudToHorizontal(pPointCloud cloud);
 	pPointCloud removeHorizontalPlane(pPointCloud cloud, bool onlyGround = false);
 
 	pPointCloud extractVerticalCloud(pPointCloud cloud);
@@ -93,7 +93,7 @@ public:
 	void locateClimbingMountain(void);
 	void locateReachingMountain(void);
 	bool isStoped(void);
-	void updatemodeROI(void);
+
 	inline pPointCloud getSrcCloud(void) { return srcCloud; }
 	inline pPointCloud getFilteredCloud(void) { return filteredCloud; }
 
@@ -102,13 +102,26 @@ public:
     unsigned int nextStatusCounter;
 	unsigned int roiChangeCounter;
 	double diatancemeasurement;
+	bool exGroSegmentStatus = true;
+	bool exVerSegmentStatus = true;
+	bool exRoiSegmentStatus = true;
 	bool segmentStatus = true;
-	uint16_t* data;
+	bool ifGetVerticalCloud=false;
+	bool ifRotated=false;
+	bool ifComputeNormal=false;
 
-	rs2_intrinsics color_intrin;
-	rs2_intrinsics depth_intrin;
-	rs2_extrinsics depth2color_extrin;
-	rs2_extrinsics color2depth_extrin;
+
+	std::mutex mutex1;
+	std::mutex mutex2;
+	std::mutex mutex3;
+	std::mutex mutex4;
+	std::mutex mutex5;
+	std::mutex mutex6;
+	std::mutex mutex7;
+	std::mutex mutex8;
+	std::mutex mutex9;
+	std::mutex coutMutex;
+
 
 	
 private:
@@ -121,9 +134,14 @@ private:
 	pPointCloud     dstCloud;
 	pPointCloud		groundCloud;
 	pPointCloud		forGroundCloud;
+	pPointCloud		afterRoteCloud;
+	pPointCloud		getVerticalCloud;
+	pPointCloud		finalVerticalCloud;
+	pcl::PointCloud<pcl::Normal>::Ptr pointNormal;
 
 	pcl::ModelCoefficients::Ptr groundCoeff;
 	pcl::ModelCoefficients::Ptr groundCoeffRotated;
+	pcl::ModelCoefficients::Ptr groundCoeffFinal;
 
     pcl::PointIndices::Ptr  indicesROI;
 	ObjectROI               leftFenseROImin;
@@ -142,7 +160,10 @@ private:
 	float peakDist;
 	float besidebarrierDist;
 	float frontbarrierDist;
+   	float duneDistance;
 
+
+	
 
 	float angle;
 

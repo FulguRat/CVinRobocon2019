@@ -1,5 +1,4 @@
 #include "getStatus.h"
-#include "opencv2/opencv.hpp"
 
 #ifdef __linux__
 void GetStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGround)
@@ -25,7 +24,7 @@ void GetStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGround
 	    else{
 		        step = 0;
 		        std::cout << "wait...\n";
-                        //my_serial->write("wait..\r\n");
+                        my_serial->write("wait..\r\n");
 		}
 	    break;
 	    case 2:
@@ -96,13 +95,12 @@ void GetStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGround
 	  }
 	}
 }
+
 void UpdateStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGround)
 {
 	uint8_t serialData[8];
 	int step = 0;
 	int wileFlag = 1;
-	static unsigned int noConnectTime = 0;
-        static unsigned int storedStatus = 0;
 
 	while(wileFlag)
 	{
@@ -140,7 +138,6 @@ void UpdateStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGro
 		switch(serialData[5])
 		{
 			case '0':
-                           noConnectTime = 0;
                            *runStatus = BEFORE_DUNE_STAGE_1;
                            step = 4;
 			break;
@@ -176,15 +173,6 @@ void UpdateStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGro
                            *runStatus = 8;
                            step = 4;
 			break;
-			case 'c':
-			   noConnectTime = 0;
-                           std::cout << "connect ok\n";
-			   //if(*runStatus == WAIT_STATUS)
-			   //{
-			      //*runStatus = storedStatus;
-			   //}
-			    step = 5;
-			break;
                         default:
                             wileFlag = 0;
                         break;
@@ -195,84 +183,66 @@ void UpdateStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGro
 		my_serial->write("ok\r\n");
                 wileFlag = 0;
 	    break;
-            case 5:
-		std::cout << "step = 5\n";
-                wileFlag = 0;
-            break;
 	    default:
 	    break;
 	  }
-	}
-	std::cout << "noConnectTime: " << noConnectTime;
-	if(noConnectTime > 35)
-	{
-	  std::cout << "enter waitmain\n";
-	  *runStatus = WAIT_STATUS;
-	}else
-	{			
-	  noConnectTime ++;
 	}
 }
 union dataUnion
 {
 	uint8_t dataChar[4];
-	float data;
+	double data;
 };
 
-void SendDatas(serial::Serial *my_serial, int status, float frountData, float lateralDatas,float time)
+void SendDatas(serial::Serial *my_serial, int status, float frountData, float lateralDatas)
 {
 	dataUnion frountUnion;
 	dataUnion lateralUnion;
-	dataUnion timeUnion;
 
 	frountUnion.data = frountData;
 	lateralUnion.data = lateralDatas;
-	timeUnion.data = time;
-	uint8_t allDatas[17];
+
+	uint8_t allDatas[13];
 
 	allDatas[0] = '\r';
 	allDatas[1] = '\n';
-	allDatas[15] = '\r';
-	allDatas[16] = '\n';
+	allDatas[11] = '\r';
+	allDatas[12] = '\n';
 
 	switch (status)
 	{
 	case 1:
-		allDatas[2] = '1';
+		allDatas[2] = '0';
 		break;
 	case 2:
-		allDatas[2] = '2';
+		allDatas[2] = '1';
 		break;
 	case 3:
-		allDatas[2] = '3';
+		allDatas[2] = '1';
 		break;
 	case 4:
-		allDatas[2] = '4';
+		allDatas[2] = '2';
 		break;
 	case 5:
-		allDatas[2] = '5';
+		allDatas[2] = '2';
 		break;
 	case 6:
-		allDatas[2] = '6';
+		allDatas[2] = '3';
 		break;
 	case 7:
-		allDatas[2] = '7';
+		allDatas[2] = '4';
 		break;
 	case 9:
-		allDatas[2] = '9';
-		break;
-	case 8:
-		allDatas[2] = '8';
+		allDatas[2] = '5';
 		break;
 	case 10:
-		allDatas[2] = '10';
+		allDatas[2] = '7';
 		break;
 	}
-	CopyData(&frountUnion.dataChar[0], &allDatas[3], 4);
-	CopyData(&lateralUnion.dataChar[0], &allDatas[7], 4);
-	CopyData(&timeUnion.dataChar[0], &allDatas[11], 4);
+	CopyData(frountUnion.dataChar, &allDatas[3], 4);
+	CopyData(lateralUnion.dataChar, &allDatas[7], 4);
 
-	my_serial->write(allDatas, 17);
+	my_serial->write(allDatas, 13);
 
 
 }

@@ -1,0 +1,486 @@
+playground:1
+runStatus:1
+thread 3 0.093
+count: 64307
+num blocks: 25
+transform data: 234.194
+extractVerticalCloud 3 3.968 12.658 79.253
+ step1 date3 1.60517 0.153083 
+ locateBeforeDuneStage1 2 95.919 12.199 18.054
+playground:1
+runStatus:1
+thread 3 426.679
+count: 64971
+num blocks: 25
+transform data: 125.034
+extractVerticalCloud 3 3.903 10.373 82.658
+ step1 date3 1.65751 0.167345 
+ locateBeforeDuneStage1 2 96.977 18.694 17.204
+playground:1
+runStatus:1
+thread 3 300.019
+count: 64989
+num blocks: 25
+transform data: 124.754
+extractVerticalCloud 3 4.137 10.144 79.739
+ step1 date3 1.65751 0.167345 
+ locateBeforeDuneStage1 2 94.065 13.671 14.792
+playground:1
+runStatus:1
+thread 3 299.963
+count: 64521
+num blocks: 25
+transform data: 98.768
+extractVerticalCloud 3 3.795 10.125 84.29
+ step1 date3 1.38446 0.167345 
+ locateBeforeDuneStage1 2 98.295 12.573 15.856
+playground:1
+runStatus:1
+thread 3 266.556
+count: 64487
+num blocks: 25
+transform data: 117.032
+extractVerticalCloud 3 3.943 11.579 84.207
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 99.817 11.348 12.083
+playground:1
+runStatus:1
+thread 3 283.328
+count: 65080
+num blocks: 25
+transform data: 84.779
+extractVerticalCloud 3 3.842 10.129 87.499
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 101.553 11.495 15.648
+playground:1
+runStatus:1
+thread 3 249.96
+count: 65099
+num blocks: 25
+transform data: 108.305
+extractVerticalCloud 3 3.772 10.124 80.973
+ step1 date3 1.31307 0.167345 
+ locateBeforeDuneStage1 2 94.949 13.253 11.507
+playground:1
+runStatus:1
+thread 3 266.53
+count: 65103
+num blocks: 25
+transform data: 101.71
+extractVerticalCloud 3 3.961 11.508 87.425
+ step1 date3 1.41179 0.167345 
+ locateBeforeDuneStage1 2 102.938 15.382 14.192
+playground:1
+runStatus:1
+thread 3 266.557
+count: 65134
+num blocks: 25
+transform data: 88.72
+extractVerticalCloud 3 5.407 10.508 86.831
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 102.796 16.934 21.996
+playground:1
+runStatus:1
+thread 3 266.616
+count: 65018
+num blocks: 25
+transform data: 98.322
+extractVerticalCloud 3 3.879 11.464 84.407
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 99.829 11.513 11.325
+playground:1
+runStatus:1
+thread 3 266.756
+count: 65345
+num blocks: 25
+transform data: 88.764
+extractVerticalCloud 3 3.851 10.096 77.203
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 91.227 13.221 14.81
+playground:1
+runStatus:1
+thread 3 249.93
+count: 65230
+num blocks: 25
+transform data: 103.562
+extractVerticalCloud 3 3.907 10.157 81.742
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 95.881 11.539 14.692
+playground:1
+runStatus:1
+thread 3 266.617
+count: 65482
+num blocks: 25
+transform data: 79.178
+extractVerticalCloud 3 3.862 10.138 81.632
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 95.711 13.757 11.876
+playground:1
+runStatus:1
+thread 3 233.242
+count: 65352
+num blocks: 25
+transform data: 91.209
+extractVerticalCloud 3 3.778 10.104 77.632
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 91.56 16.822 11.434
+playground:1
+runStatus:1
+thread 3 250.354
+count: 65362
+num blocks: 25
+transform data: 82.462
+extractVerticalCloud 3 3.778 10.406 80.967
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 95.218 11.738 15.597
+playground:1
+runStatus:1
+thread 3 249.576
+count: 65053
+num blocks: 25
+transform data: 86.294
+extractVerticalCloud 3 4.009 10.666 77.572
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 92.326 12.914 15.479
+playground:1
+runStatus:1
+thread 3 249.991
+count: 65334
+num blocks: 25
+transform data: 104.015
+extractVerticalCloud 3 3.847 10.302 82.074
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 96.264 13.072 12.008
+playground:1
+runStatus:1
+thread 3 266.607
+count: 65040
+num blocks: 25
+transform data: 141.036
+extractVerticalCloud 3 3.973 10.505 86.787
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 101.339 11.774 12.143
+playground:1
+runStatus:1
+thread 3 316.664
+count: 65102
+num blocks: 25
+transform data: 133.218
+extractVerticalCloud 3 3.796 10.422 82.151
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 96.422 12.717 13.73
+playground:1
+runStatus:1
+thread 3 299.902
+count: 65304
+num blocks: 25
+transform data: 85.016
+extractVerticalCloud 3 3.861 10.435 80.93
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 95.293 11.762 15.882
+playground:1
+runStatus:1
+thread 3 266.921
+count: 65182
+num blocks: 25
+transform data: 88.79
+extractVerticalCloud 3 4.972 10.405 83.719
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 99.178 11.653 15.288
+playground:1
+runStatus:1
+thread 3 249.693
+count: 65389
+num blocks: 25
+transform data: 117.496
+extractVerticalCloud 3 3.97 11.578 86.842
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 102.462 11.71 11.742
+playground:1
+runStatus:1
+thread 3 283.288
+count: 65295
+num blocks: 25
+transform data: 102.535
+extractVerticalCloud 3 3.789 10.111 80.555
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 94.498 12.739 11.828
+playground:1
+runStatus:1
+thread 3 266.643
+count: 65216
+num blocks: 25
+transform data: 91.442
+extractVerticalCloud 3 3.926 11.51 86.474
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 101.988 11.653 12.14
+playground:1
+runStatus:1
+thread 3 266.609
+count: 65039
+num blocks: 25
+transform data: 108.375
+extractVerticalCloud 3 5.115 10.53 82.758
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 98.548 16.66 13.09
+playground:1
+runStatus:1
+thread 3 283.319
+count: 65153
+num blocks: 25
+transform data: 121.528
+extractVerticalCloud 3 3.863 10.334 83.174
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 97.413 16.605 14.376
+playground:1
+runStatus:1
+thread 3 299.899
+count: 65155
+num blocks: 25
+transform data: 107.332
+extractVerticalCloud 3 3.849 10.47 80.885
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 95.269 11.691 11.66
+playground:1
+runStatus:1
+thread 3 283.302
+count: 65278
+num blocks: 25
+transform data: 92.996
+extractVerticalCloud 3 3.764 10.133 91.633
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 105.605 15.012 11.442
+playground:1
+runStatus:1
+thread 3 267.284
+count: 65309
+num blocks: 25
+transform data: 106.853
+extractVerticalCloud 3 6.084 10.718 84.417
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 101.288 14.874 11.178
+playground:1
+runStatus:1
+thread 3 265.964
+count: 65459
+num blocks: 25
+transform data: 210.682
+extractVerticalCloud 3 3.884 10.114 78.603
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 92.643 15.104 11.207
+playground:1
+runStatus:1
+thread 3 366.667
+count: 64911
+num blocks: 25
+transform data: 133.198
+extractVerticalCloud 3 3.877 12.526 86.121
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 102.568 15.082 10.27
+playground:1
+runStatus:1
+thread 3 299.932
+count: 64952
+num blocks: 25
+transform data: 101.862
+extractVerticalCloud 3 3.786 10.224 87.321
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 101.377 11.879 16.969
+playground:1
+runStatus:1
+thread 3 266.623
+count: 64609
+num blocks: 25
+transform data: 96.486
+extractVerticalCloud 3 3.896 9.972 80.331
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 94.268 11.72 12.635
+playground:1
+runStatus:1
+thread 3 249.984
+count: 63931
+num blocks: 25
+transform data: 105.795
+extractVerticalCloud 3 3.824 10.261 77.598
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 91.761 12.799 15.76
+playground:1
+runStatus:1
+thread 3 266.632
+count: 64387
+num blocks: 25
+transform data: 85.787
+extractVerticalCloud 3 3.999 10.166 84.02
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 98.252 11.967 12.509
+playground:1
+runStatus:1
+thread 3 249.924
+count: 63903
+num blocks: 25
+transform data: 94.397
+extractVerticalCloud 3 3.938 10.069 79.248
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 93.322 11.889 15.787
+playground:1
+runStatus:1
+thread 3 249.945
+count: 64374
+num blocks: 25
+transform data: 108.223
+extractVerticalCloud 3 3.864 10.245 81.544
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 95.696 13.007 13.509
+playground:1
+runStatus:1
+thread 3 266.684
+count: 64439
+num blocks: 25
+transform data: 83.927
+extractVerticalCloud 3 3.817 10.277 78.457
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 92.623 11.54 11.606
+playground:1
+runStatus:1
+thread 3 233.282
+count: 64643
+num blocks: 25
+transform data: 102.164
+extractVerticalCloud 3 3.744 10.147 83.486
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 97.451 11.797 14.798
+playground:1
+runStatus:1
+thread 3 283.304
+count: 64524
+num blocks: 25
+transform data: 107.725
+extractVerticalCloud 3 5.024 11.684 84.696
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 101.478 11.544 12.663
+playground:1
+runStatus:1
+thread 3 266.608
+count: 64546
+num blocks: 25
+transform data: 93.147
+extractVerticalCloud 3 4.164 10.487 83.402
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 98.119 12.25 11.848
+playground:1
+runStatus:1
+thread 3 249.981
+count: 64600
+num blocks: 25
+transform data: 128.676
+extractVerticalCloud 3 3.869 11.412 83.128
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 98.483 11.685 12.12
+playground:1
+runStatus:1
+thread 3 284.181
+count: 63155
+num blocks: 25
+transform data: 83.893
+extractVerticalCloud 3 3.952 11.502 79.101
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 94.597 15.366 15.934
+playground:1
+runStatus:1
+thread 3 249.107
+count: 62747
+num blocks: 25
+transform data: 91.248
+extractVerticalCloud 3 3.927 11.38 84.555
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 99.939 11.682 15.113
+playground:1
+runStatus:1
+thread 3 266.604
+count: 62966
+num blocks: 25
+transform data: 106.088
+extractVerticalCloud 3 3.786 10.129 83.557
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 97.531 17.082 11.566
+playground:1
+runStatus:1
+thread 3 266.624
+count: 64879
+num blocks: 25
+transform data: 118.673
+extractVerticalCloud 3 3.829 10.114 82.996
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 96.988 13.709 12.019
+playground:1
+runStatus:1
+thread 3 283.582
+count: 65028
+num blocks: 25
+transform data: 103.324
+extractVerticalCloud 3 3.796 10.152 80.896
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 94.924 11.644 11.97
+playground:1
+runStatus:1
+thread 3 266.413
+count: 65076
+num blocks: 25
+transform data: 77.977
+extractVerticalCloud 3 3.796 10.036 76.071
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 89.952 17.365 11.974
+playground:1
+runStatus:1
+thread 3 233.367
+count: 64986
+num blocks: 25
+transform data: 109.67
+extractVerticalCloud 3 3.941 11.576 84.419
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 100.005 11.652 11.906
+playground:1
+runStatus:1
+thread 3 266.435
+count: 65459
+num blocks: 25
+transform data: 99.817
+extractVerticalCloud 3 3.835 9.977 86.937
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 100.801 14.664 10.898
+playground:1
+runStatus:1
+thread 3 266.705
+count: 65269
+num blocks: 25
+transform data: 89.735
+extractVerticalCloud 3 5.236 10.607 78.287
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 94.206 11.688 13.934
+playground:1
+runStatus:1
+thread 3 250.659
+count: 65398
+num blocks: 25
+transform data: 87.886
+extractVerticalCloud 3 3.79 10.213 79.265
+ step1 date3 1.44448 0.167345 
+ locateBeforeDuneStage1 2 93.333 13.313 16.715
+playground:1
+runStatus:1
+thread 3 249.229
+count: 65112
+num blocks: 25
+transform data: 79.536
+extractVerticalCloud 3 3.802 10.494 80.2
+ step1 date3 1.46965 0.167345 
+ locateBeforeDuneStage1 2 94.565 11.512 11.473
+playground:1
+runStatus:1
+thread 3 233.233
+count: 65308
+num blocks: 25
+transform data: 106.017
+^C
+nvidia@tegra-ubuntu:~/code/robocon/CVinRobocon2019/script$ 
+

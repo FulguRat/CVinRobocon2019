@@ -6,7 +6,6 @@
 #include "main.h"
 #include <thread>
 
-
 using namespace std;
 using namespace std::chrono;
 
@@ -34,7 +33,7 @@ int main(int argc, char* argv[])
 
 
 	distancefilter.initKalmanFilter(2, 1, (cv::Mat_<float>(2, 2) << 1, 0.3, 0, 1), (cv::Mat_<float>(1, 2) << 1, 0), 1e-5, 1e-2, 0.1);
-#ifndef __linux__
+#ifdef __linux__
 	std::cout << "[INFO]" << "serial init...\n";
 	serial::Serial my_serial("/dev/ttyTHS2", 115200, serial::Timeout::simpleTimeout(2));
 	if(my_serial.isOpen())
@@ -48,8 +47,8 @@ int main(int argc, char* argv[])
         serial::Serial *serialPtr = &my_serial;
         std::cout << "[INFO]" << "GetStatus:\n";
         GetStatus(serialPtr,&fajLocator.status,&mode);
-        
-		
+       
+	//mode=LEFT_MODE;	
     	// openVINO init
     	std::cout << "openvino init\n";
     	TensorRT tensorRT(argc,argv,mode);
@@ -59,15 +58,22 @@ int main(int argc, char* argv[])
     	// playground-1 only want to be test
     	MvInit mvCamera(mode);
 #endif
-	thread getCloudPoint(&RobotLocator::updateSrcCloud, &fajLocator);
+	//mode=0;
 	thread cloudPointPreprocess(&RobotLocator::cloudPointPreprocess, &fajLocator);
-	getCloudPoint.detach();
 	cloudPointPreprocess.detach();
+	fajLocator.status=STARTUP_INITIAL;
+	fajLocator.updatemodeROI();
 	while (!fajLocator.isStoped())
 	{
-#ifdef DEBUG
-		startt = chrono::steady_clock::now();
-#endif
+		if(fajLocator.status < PASSING_DUNE && fajLocator.status > STARTUP_INITIAL) 
+		{
+			startt = chrono::steady_clock::now();
+			fajLocator.updateCloud();
+			fajLocator.preProcess();
+		}
+		else
+			startt = chrono::steady_clock::now();
+
 		fajLocator.segmentStatus = true;
 		fajD435.status = fajLocator.status;
 
@@ -76,12 +82,21 @@ int main(int argc, char* argv[])
 		//steady_clock::time_point t1 = steady_clock::now();
 		switch (fajLocator.status)
 		{
+			
 			case STARTUP_INITIAL:
-				fajLocator.status = BEFORE_GRASSLAND_STAGE_1;
-				if (fajLocator.status <= BEFORE_GRASSLAND_STAGE_1)
-					fajD435.status = BEFORE_GRASSLAND_STAGE_1;
+				fajLocator.status = BEFORE_DUNE_STAGE_1;
+				if (fajLocator.status < PASSING_DUNE)
+					fajD435.status = PASSING_DUNE;
 				else
+				{
 					fajD435.status = fajLocator.status;
+					std::unique_lock<std::mutex> lk(fajD435.mutex2);
+					fajD435.xkFlag = true;
+					cout << "xkFLag true" << endl;
+					lk.unlock();
+					fajD435.cond.notify_one();	
+				}
+				
 				break;
 
 			case BEFORE_DUNE_STAGE_1:
@@ -110,13 +125,10 @@ int main(int argc, char* argv[])
 
 			case UNDER_MOUNTAIN:
 				fajLocator.locateUnderMountain();
-#ifndef __linux__
-				UpdateStatus(serialPtr,&fajLocator.status,&mode);
-#endif
 				break;
 
 			case BONE_RECOGNITION:
-#ifndef __linux__		
+#ifdef __linux__		
 				tensorRT.srcImg = mvCamera.getImage();
 				//cap >> tensorRT.srcImg;
 				//cv::imshow("src",tensorRT.srcImg);
@@ -137,19 +149,59 @@ int main(int argc, char* argv[])
 			case REACH_MOUNTAIN:
 				fajLocator.locateReachingMountain();
 				break;
+			case WAIT_STATUS:
+			{
+				std::cout << "waitmain...\n";
+				UpdateStatus(serialPtr,&fajLocator.status,&mode);
+				std::unique_lock<std::mutex> lk(fajD435.mutex2);
+				
+				if(fajLocator.status != WAIT_STATUS)
+				{
+					if (fajLocator.status < PASSING_DUNE)
+					{
+						fajD435.status = PASSING_DUNE;
+						fajLocator.updatemodeROI();
+					}	
+					else
+					{
+						fajD435.status = fajLocator.status;
+						std::unique_lock<std::mutex> lk(fajD435.mutex2);
+						fajD435.xkFlag = true;
+						cout << "xkFLag true" << endl;
+						lk.unlock();
+						fajD435.cond.notify_one();	
+					}
+				}
+				else
+				{
+			
+					fajD435.xkFlag = false;
+					lk.unlock();
+				}
+			}
+				
+			break;
 			default:
 				break;
 		}
-		//if(status <= 4)
-		//	xdistance=distancefilter.predictAndCorrect(Mat_<float>(1, 1)<<fajLocator.diatancemeasurement).at<float>(0,0);
-		if (fajLocator.status!=0&& fajLocator.status!=8)
-		{
-			//SendDatas(serialPtr, dbStatus, frontDist, lateralDist);
-		}
+#ifdef __linux__
+		if(fajLocator.status != WAIT_STATUS)
+			UpdateStatus(serialPtr,&fajLocator.status,&mode);
+#endif
 		stopt = chrono::steady_clock::now();
 		totalTime = chrono::duration_cast<chrono::microseconds>(stopt - startt);
+		//lateralDist=100.0f;
+		//frontDist=200.0f;
+		//if(status <= 4)
+		//	xdistance=distancefilter.predictAndCorrect(Mat_<float>(1, 1)<<fajLocator.diatancemeasurement).at<float>(0,0);
+		if (fajLocator.status!=0 && fajLocator.status != 8&&fajLocator.status != WAIT_STATUS)
+		{
+			SendDatas(serialPtr, dbStatus, frontDist, lateralDist, float(totalTime.count())/1000.0f);
+		}
+
 #ifdef DEBUG
-		cout << "thread 3 " << double(totalTime.count()) / 1000.0f << endl;
+cout << "status: " << fajLocator.status << endl;
+		cout << "thread 3 " << double(totalTime.count()) / 1000.0f<<" mode "<<mode << endl;
 		
 #endif // DEBUG
 

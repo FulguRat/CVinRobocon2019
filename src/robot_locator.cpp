@@ -11,10 +11,24 @@ groundCoeff(new pcl::ModelCoefficients),
 groundCoeffRotated(new pcl::ModelCoefficients),
 dstViewer(new pcl::visualization::PCLVisualizer("Advanced Viewer"))
 {
-	if (!mode)
+	
+	dstViewer->setBackgroundColor(0.259, 0.522, 0.957);
+   	dstViewer->addPointCloud<pointType>(forGroundCloud, "ground Cloud");
+    	dstViewer->addPointCloud<pointType>(dstCloud, "Destination Cloud");
+    	dstViewer->addCoordinateSystem(0.2, "view point");
+    	dstViewer->initCameraParameters();
+}
+
+RobotLocator::~RobotLocator()
+{
+
+}
+void RobotLocator::updatemodeROI(void)
+{
+	if (mode == LEFT_MODE)
 	{
-		leftFenseROImax = { -0.9/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
-		leftFenseROImin = { -0.9/*xMin*/, -0.2/*xMax*/, 0.0/*zMin*/, 1.0/*zMax*/ };
+		leftFenseROImax = { -1.2/*xMin*/, -0.1/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
+		leftFenseROImin = { -1.2/*xMin*/, -0.1/*xMax*/, 0.0/*zMin*/, 1.5/*zMax*/ };
 		duneROI = { -0.7/*xMin*/,  0.1/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
 		// frontFenseROI = { -1.3/*xMin*/,  0.3/*xMax*/, 1.2/*zMin*/, 2.1/*zMax*/ };
 		frontFenseROI = { -0.7/*xMin*/,  0.1/*xMax*/, 0.0/*zMin*/, 1.7/*zMax*/ };
@@ -22,27 +36,14 @@ dstViewer(new pcl::visualization::PCLVisualizer("Advanced Viewer"))
 	}
 	else
 	{
-		leftFenseROImax = { 0.2/*xMin*/, 0.9/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
-		leftFenseROImin = { 0.2/*xMin*/, 0.9/*xMax*/, 0.0/*zMin*/, 1.0/*zMax*/ };
+		leftFenseROImax = { 0.1/*xMin*/, 1.2/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
+		leftFenseROImin = { 0.1/*xMin*/, 1.2/*xMax*/, 0.0/*zMin*/, 1.5/*zMax*/ };
 		duneROI = { -0.1/*xMin*/,  0.7/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
 		// frontFenseROI = { -1.3/*xMin*/,  0.3/*xMax*/, 1.2/*zMin*/, 2.1/*zMax*/ };
 		frontFenseROI = { -0.1/*xMin*/,  0.7/*xMax*/, 0.0/*zMin*/, 1.7/*zMax*/ };
 		grasslandFenseROI = { -0.4/*xMin*/,  0.6/*xMax*/, 0.0/*zMin*/, 3.0/*zMax*/ };
 	}
-
-
-	dstViewer->setBackgroundColor(0.259, 0.522, 0.957);
-    dstViewer->addPointCloud<pointType>(forGroundCloud, "ground Cloud");
-    dstViewer->addPointCloud<pointType>(dstCloud, "Destination Cloud");
-    dstViewer->addCoordinateSystem(0.2, "view point");
-    dstViewer->initCameraParameters();
 }
-
-RobotLocator::~RobotLocator()
-{
-
-}
-
 void RobotLocator::init(ActD435& d435)
 {
 	cout << "Initializing locator..." << endl;
@@ -130,39 +131,41 @@ void RobotLocator::updateCloud(void)
 	//-- copy the pointer to srcCloud
 	thisD435->update();
 }
-void RobotLocator::updateSrcCloud(void)
-{
-	chrono::steady_clock::time_point start;
-	chrono::steady_clock::time_point stop;
-	int count = 0; 
-	while (true)
-	{
-		count ++;
-		start = chrono::steady_clock::now();
-		updateCloud();
-		stop = chrono::steady_clock::now();
-		auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
-		cout << "thread1 Time: " << double(totalTime.count()) / 1000.0f << endl;
-		cout << "thread1 Cnt: " << count << endl;
-	}
-	
-}
+
 void RobotLocator::cloudPointPreprocess(void)
 {
 	chrono::steady_clock::time_point start;
 	chrono::steady_clock::time_point stop;
 	int count = 0; 
+	std::unique_lock<std::mutex> lk(thisD435->mutex2);
+        thisD435->cond.wait(lk, [this]{return thisD435->xkFlag;});
 	while (true)
 	{
 		count ++;
+		int breakFlag = 0;
+		updateCloud();
 		start = chrono::steady_clock::now();
-		preProcess();	
+		//subsampling
+		pcl::ApproximateVoxelGrid<pointType> passVG;
+		passVG.setInputCloud(thisD435->cloudByRS2);
+		passVG.setLeafSize(0.025f, 0.025f, 0.025f);
+		passVG.filter(*forGroundCloud);		
+	
 		extractGroundCoeff(forGroundCloud);
 		rotatePointCloudToHorizontal(forGroundCloud);
 		stop = chrono::steady_clock::now();
 		auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
 		cout << "thread2 Time: : " << double(totalTime.count()) / 1000.0f << endl;
 		cout << "thread2 Cnt: " << count << endl;
+		
+		lk.lock();
+		if(thisD435->xkFlag == false)
+			breakFlag = 1;
+		else
+			breakFlag = 0;
+		lk.unlock();
+		if(breakFlag)
+			thisD435->cond.wait(lk, [this]{return thisD435->xkFlag;});
 	}
 
 }
@@ -174,45 +177,25 @@ void RobotLocator::preProcess(void)
 	
 	//-- Pass through filter
 	thrust::device_vector<mb_cuda::PointXYZRGB> device_cloud;
-	while(!thisD435->pointCloudUpdateFlag)
-	{
-	}
-	thisD435->mutex2.lock();
 	mb_cuda::host_to_device(thisD435->sourceThrust, device_cloud);
-	thisD435->pointCloudUpdateFlag = false;
-	thisD435->mutex2.unlock();
+
 	thrust::device_vector<mb_cuda::PointXYZRGB> d_filtered_cloud;
 
 	groundROI = { -0.5,0.5,0,1.0 };
 	
 	start = chrono::steady_clock::now();
 	pcl::PassThrough<pointType> pass;
-	if (status <= 4)
+	
+	mb_cuda::pass_through_filter(device_cloud, d_filtered_cloud, 'z', 0.0f, 2.0f);
+	if(mode == LEFT_MODE)
 	{
-		mb_cuda::pass_through_filter(device_cloud, d_filtered_cloud, 'z', 0.0f, 2.0f);
+		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'x', -1.5f, 1.0f);
+	}else
+	{
+		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'x', -1.0f, 1.5f);
+	}
 
-		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'x', -1.0f, 1.0f);
 		
-
-	}
-	else if (status == CLIMBING_MOUNTAIN)
-	{
-		mb_cuda::pass_through_filter(device_cloud, d_filtered_cloud, 'y', 0.0f, 1.5f);
-
-		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'x', -2.0f, -0.2f);
-
-		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'z', 0.0f, 2.0f);
-
-	}
-	else
-	{
-		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'z', 0.0f, 1.5f);
-
-		mb_cuda::pass_through_filter(d_filtered_cloud, d_filtered_cloud, 'x', -1.0f, 1.0f);		
-
-		mb_cuda::pass_through_filter(device_cloud, d_filtered_cloud, 'y', 0.0f, 1.5f);
-
-	}
 	//-- Down sampling
 
 	float leafSize = 0.025;
@@ -225,32 +208,25 @@ void RobotLocator::preProcess(void)
 	//for ground point
 	thrust::device_vector<mb_cuda::PointXYZRGB> forThrustGroundCloud;
 
-	if(status <= 4)
-	{
-		mb_cuda::device_to_host(d_filtered_cloud, hostCloud);
-		mb_cuda::thrust_to_pcl(hostCloud, filteredCloud);
+	mb_cuda::device_to_host(d_filtered_cloud, hostCloud);
+	mb_cuda::thrust_to_pcl(hostCloud, filteredCloud);
 
-		mb_cuda::pass_through_filter(d_filtered_cloud, forThrustGroundCloud, 'z', groundROI.zMin, groundROI.zMax);
+	mb_cuda::pass_through_filter(d_filtered_cloud, forThrustGroundCloud, 'z', groundROI.zMin, groundROI.zMax);
 
-		mb_cuda::pass_through_filter(forThrustGroundCloud, forThrustGroundCloud, 'x', groundROI.xMin, groundROI.xMax);
+	mb_cuda::pass_through_filter(forThrustGroundCloud, forThrustGroundCloud, 'x', groundROI.xMin, groundROI.xMax);
 
-		mb_cuda::device_to_host(forThrustGroundCloud, hostCloud);
-		mb_cuda::thrust_to_pcl(hostCloud, forGroundCloud);
-		
-		//-- Remove outliers
-		//start = chrono::steady_clock::now();
-		pcl::StatisticalOutlierRemoval<pointType> passSOR;
-		passSOR.setInputCloud(filteredCloud);
-		passSOR.setMeanK(10);
-		passSOR.setStddevMulThresh(0.1);
-		passSOR.filter(*filteredCloud);
-		// cout << double(totalTime.count()) / 1000.0f <<" "<<  double(totalTime1.count()) / 1000.0f <<" " <<double(totalTime2.count()) / 1000.0f <<" "<< endl;
-	}
-	else
-	{
-		mb_cuda::device_to_host(d_filtered_cloud, hostCloud);
-		mb_cuda::thrust_to_pcl(hostCloud, forGroundCloud);
-	}
+	mb_cuda::device_to_host(forThrustGroundCloud, hostCloud);
+	mb_cuda::thrust_to_pcl(hostCloud, forGroundCloud);
+	
+	//-- Remove outliers
+	//start = chrono::steady_clock::now();
+	//pcl::StatisticalOutlierRemoval<pointType> passSOR;
+	//passSOR.setInputCloud(filteredCloud);
+	//passSOR.setMeanK(10);
+	//passSOR.setStddevMulThresh(0.1);
+	//passSOR.filter(*filteredCloud);
+	// cout << double(totalTime.count()) / 1000.0f <<" "<<  double(totalTime1.count()) / 1000.0f <<" " <<double(totalTime2.count()) / 1000.0f <<" "<< endl;
+	
 	stop = chrono::steady_clock::now();
 	auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
 	cout << "transform data: " << double(totalTime.count()) / 1000.0f << endl;
@@ -286,7 +262,7 @@ bool RobotLocator::extractGroundCoeff(pPointCloud cloud)
 	double originDistanceLast = groundCoeff->values[3] / vecNormalLast.norm();
 	double originDistanceThis = coefficients->values[3] / vecNormalThis.norm();
 	double distDifference = abs(originDistanceThis - originDistanceLast);
-	if (status <= 4)
+	if (status < PASSING_DUNE)
 	{
 		if (angleCosine > 0.8f && distDifference < 0.04f)
 		{
@@ -301,7 +277,7 @@ bool RobotLocator::extractGroundCoeff(pPointCloud cloud)
 		thisD435->groundCoeff[3] = coefficients->values[3];
 		if(status == BEFORE_GRASSLAND_STAGE_1)
 		{
-			if(thisD435->groundCoeff[3] < 0.50)
+			if(thisD435->groundCoeff[3] < 0.51)
 				thisD435->groundCoeff[3] += 0.1;
 		}
 		thisD435->mutex3.lock();
@@ -330,7 +306,7 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 	Eigen::Vector3f Axis = (-groundCoeff->values[3] / fabs(groundCoeff->values[3])) * vecNormal.cross(Eigen::Vector3f(0, -1, 0));
 	Axis.normalize();
 
-	if (status>4)
+	if (status >= PASSING_DUNE)
 	{
 		//-- Define the rotate transform
 		Eigen::Affine3f rotateToXZPlane = Eigen::Affine3f::Identity();
@@ -358,9 +334,10 @@ pPointCloud RobotLocator::rotatePointCloudToHorizontal(pPointCloud cloud)
 	{		
 
 		Eigen::AngleAxisf t_V(angle, -Axis);
-
-		angle = -25.0f / 180.0f*3.14;
-
+		if(mode == LEFT_MODE)
+			angle = -25.0f / 180.0f*3.14;
+		else
+			angle = 25.0f / 180.0f*3.14;
 		Eigen::AngleAxisf t_V1(angle, Eigen::Vector3f::UnitY()), t_V2;
 
 		Eigen::Matrix3f t_R, t_R1, t_R2;
@@ -553,7 +530,8 @@ void RobotLocator::extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi,
 
 	seg.setInputCloud(cloud);
 	seg.segment(*indices, *coefficients);
-
+cout << "mode  in roi" << mode << endl;
+cout << "roi" << roi.xMin << " " << roi.xMax << endl;
 	if (coefficients->values.size() == 0)
 	{
 		segmentStatus = false;
@@ -596,6 +574,7 @@ void RobotLocator::extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi,
 			indices->indices.push_back(indicesROI->indices[i]);
 		}
 	}
+
 }
 
 ObjectROI RobotLocator::updateObjectROI(pPointCloud cloud, pcl::PointIndices::Ptr indices,
@@ -644,12 +623,14 @@ void RobotLocator::locateBeforeDuneStage1(void)
 	auto totalTime4 = chrono::duration_cast<chrono::microseconds>(stop - start);
 	start = chrono::steady_clock::now(); 
 #endif
-
+	dbStatus = 0;
 	extractVerticalCloud(filteredCloud);
 	if (!segmentStatus)
 	{
+		cout << "cannot find vertical cloud" << endl;
 		return;
 	}
+cout<<filteredCloud->points.size()<<endl;
 #ifdef DEBUG
 	stop = chrono::steady_clock::now();
 	totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
@@ -663,10 +644,11 @@ void RobotLocator::locateBeforeDuneStage1(void)
 #endif // DEBUG
 
 	extractPlaneWithinROI(verticalCloud, leftFenseROImax, inliers, coefficients);
-//cout<<verticalCloud->points.size()<<endl;
+cout<<verticalCloud->points.size()<<endl;
 //cout<<"false"<<endl;
 	if (!segmentStatus)
 	{
+		cout << "cannot find roi cloud" << endl;
 		return;
 	}
 #ifdef DEBUG
@@ -681,11 +663,12 @@ void RobotLocator::locateBeforeDuneStage1(void)
 	start = chrono::steady_clock::now();
 #endif // DEBUG
 	extractPlaneWithinROI(verticalCloud, leftFenseROImin, inliers, coefficients);
-	leftFenseROImin = updateObjectROI(verticalCloud, inliers, 0.3, 0.3, 0.1, 0.1, true, false, leftFenseROImin);
 	if (!segmentStatus)
-	{
+	{	cout<<"cannot fine roi cloud 2"<<endl;
 		return;
 	}
+	leftFenseROImin = updateObjectROI(verticalCloud, inliers, 0.3, 0.3, 0.1, 0.1, true, false, leftFenseROImin);
+
 #ifdef DEBUG
 	stop = chrono::steady_clock::now();
 	totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
@@ -694,18 +677,18 @@ void RobotLocator::locateBeforeDuneStage1(void)
 	double xDistance = calculateDistance(groundCoeffRotated, coefficients);
 
 
-	duneROI.xMin = leftFenseROImin.xMax - 0.3;
-	duneROI.xMax = leftFenseROImin.xMax + 0.9;
-	duneROI.zMin = leftFenseROImin.zMin + 0.3;
-	duneROI.zMax = leftFenseROImin.zMax + 0.9;
+	duneROI.xMin = leftFenseROImax.xMax - 0.3;
+	duneROI.xMax = leftFenseROImax.xMax + 0.9;
+	duneROI.zMin = leftFenseROImax.zMin + 0.3;
+	duneROI.zMax = leftFenseROImax.zMax + 0.9;
 
 	if (maxVector[2] < 1.50f) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
-	if (nextStatusCounter >= 3) { status++; }
-	lateralDist = xDistance;
+	if (nextStatusCounter >= 2) { status++; }
+	lateralDist = xDistance*1000;
 	frontDist = 0.0f;
-	dbStatus = 0;
+
 
 #ifdef DEBUG
 	for (int i = 0; i < inliers->indices.size(); i++)
@@ -737,6 +720,7 @@ void RobotLocator::locateBeforeDuneStage2(void)
 	auto totalTime4 = chrono::duration_cast<chrono::microseconds>(stop - start);
 	start = chrono::steady_clock::now();
 #endif
+	dbStatus = 1;
 	extractVerticalCloud(filteredCloud);
 	if (!segmentStatus)
 	{
@@ -769,12 +753,7 @@ void RobotLocator::locateBeforeDuneStage2(void)
 
 	Vector3d vecXAxis(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
 #ifdef DEBUG
-	for (int i = 0; i < inliers->indices.size(); i++)
-	{
-		dstCloud->points[inliers->indices[i]].r = 234;
-		dstCloud->points[inliers->indices[i]].g = 67;
-		dstCloud->points[inliers->indices[i]].b = 53;
-	}
+
 	start = chrono::steady_clock::now();
 #endif
 
@@ -836,18 +815,35 @@ void RobotLocator::locateBeforeDuneStage2(void)
 		seg.segment(*inliers, *coefficients);
 
 	}
+	for (int i = 0; i < inliers->indices.size(); i++)
+	{
+		dstCloud->points[inliers->indices[i]].r = 234;
+		dstCloud->points[inliers->indices[i]].g = 67;
+		dstCloud->points[inliers->indices[i]].b = 53;
+	}
 	if (!segmentStatus)
 	{
 		return;
 	}
 
 	leftFenseROImax = updateObjectROI(verticalCloud, inliers, 0.3, 0.3, 0.3, 0.3, true, true, leftFenseROImax);
+	if(!mode)
+	{
+		if (leftFenseROImax.xMin < -1.0)
+			leftFenseROImax.xMin = -1.0;
 
-	if (leftFenseROImax.xMin < -1.2)
-		leftFenseROImax.xMin = -1.2;
+		if (leftFenseROImax.xMax > 0)
+			leftFenseROImax.xMax = 0;
 
-	if (leftFenseROImax.xMin > 0)
-		leftFenseROImax.xMin = 0;
+	}else
+	{	
+		if (leftFenseROImax.xMin < 0)
+			leftFenseROImax.xMin = 0;
+
+		if (leftFenseROImax.xMax > 1.0)
+			leftFenseROImax.xMax = 1.0;
+
+	}
 
 
 
@@ -857,17 +853,35 @@ void RobotLocator::locateBeforeDuneStage2(void)
 	//-- Change the color of the extracted part for debuging
 	if (!mode)
 	{
-		duneROI.xMin = leftFenseROImax.xMax - 0.3;
+		duneROI.xMin = leftFenseROImax.xMax - 0.2;
 		duneROI.xMax = leftFenseROImax.xMax + 0.9;
-		duneROI.zMin = leftFenseROImax.zMax - 0.3;
+		duneROI.zMin = leftFenseROImax.zMax - 0.2;
 		duneROI.zMax = leftFenseROImax.zMax + 0.9;
 	}
 	else
 	{
 		duneROI.xMin = leftFenseROImax.xMax - 0.9;
-		duneROI.xMax = leftFenseROImax.xMax + 0.3;
-		duneROI.zMin = leftFenseROImax.zMax - 0.3;
+		duneROI.xMax = leftFenseROImax.xMax + 0.2;
+		duneROI.zMin = leftFenseROImax.zMax - 0.2;
 		duneROI.zMax = leftFenseROImax.zMax + 0.9;
+	}
+
+	if(!mode)
+	{
+		if (duneROI.xMin < -0.8)
+			duneROI.xMin = -0.8;
+
+		if (duneROI.xMax > 0.5)
+			duneROI.xMax = 0.5;
+
+	}else
+	{	
+		if (duneROI.xMin < -0.5)
+			duneROI.xMin = -0.5;
+
+		if (duneROI.xMax > 0.8)
+			duneROI.xMax = 0.8;
+
 	}
 
 
@@ -893,9 +907,9 @@ void RobotLocator::locateBeforeDuneStage2(void)
 
 	diatancemeasurement = duneDistance;
 
-	lateralDist = xDistance;
-	frontDist = duneDistance;
-	dbStatus = 1;
+	lateralDist = xDistance*1000;
+	frontDist = duneDistance*1000;
+
 	//-- Change the color of the extracted part for debuging
 #ifdef DEBUG
 	for (int i = 0; i < inliers->indices.size(); i++)
@@ -926,6 +940,7 @@ void RobotLocator::locateBeforeDuneStage3(void)
 	auto totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
 	start = chrono::steady_clock::now();
 #endif
+	dbStatus = 1;
 	extractVerticalCloud(filteredCloud);
 	if (!segmentStatus)
 	{
@@ -953,20 +968,45 @@ void RobotLocator::locateBeforeDuneStage3(void)
 	stop = chrono::steady_clock::now();
 	totalTime1 = chrono::duration_cast<chrono::microseconds>(stop - start);
 #endif
-	duneROI = updateObjectROI(verticalCloud, inliers, 0.0, 0.0, 0.3, 0.3, false, true, duneROI);
+	duneROI = updateObjectROI(verticalCloud, inliers, 0.3, 0.3, 0.3, 0.3, true, true, duneROI);
+	
+	if(!mode)
+	{
+		if (duneROI.xMin < -1.0)
+			duneROI.xMin = -1.0;
+
+		if (duneROI.xMax > 0.1)
+			duneROI.xMax = 0.1;
+
+	}else
+	{	
+		if (duneROI.xMin < -0.1)
+			duneROI.xMin = -0.1;
+
+		if (duneROI.xMax > 1.0)
+			duneROI.xMax = 1.0;
+
+	}
 
 	double duneDistance = calculateDistance(groundCoeffRotated, coefficients);
 	diatancemeasurement = duneDistance;
 
 	lateralDist = 0;
-	frontDist = duneDistance;
+	frontDist = duneDistance*1000;
 
-	if (duneDistance < 0.3f) { nextStatusCounter++; }
+	if (duneDistance < 0.45f) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
-	if (nextStatusCounter >= 3) { status+=2; }
-
-	dbStatus = 1;
+	if (nextStatusCounter >= 1)
+	{ 
+		status++; 	
+		std::unique_lock<std::mutex> lk(thisD435->mutex2);
+		thisD435->xkFlag = true;
+		lk.unlock();
+		thisD435->cond.notify_one();
+	}
+	
+	//dbStatus = 1;
 #ifdef DEBUG
 	//-- Change the color of the extracted part for debuging
 	for (int i = 0; i < inliers->indices.size(); i++)
@@ -994,106 +1034,42 @@ void RobotLocator::locateBeforeDuneStage3(void)
 
 void RobotLocator::locatePassingDune(void)
 {
-	extractVerticalCloud(filteredCloud);
+	thisD435->imgProcess();
 
-	//-- Get point cloud indices inside given ROI
-	pcl::PassThrough<pointType> pass;
-	pass.setInputCloud(verticalCloud);
-	pass.setFilterFieldName("x");
-	pass.setFilterLimits(frontFenseROI.xMin, 0.0);
-	pass.filter(indicesROI->indices);
-
-	pass.setInputCloud(verticalCloud);
-	pass.setFilterFieldName("z");
-	pass.setFilterLimits(frontFenseROI.zMin, frontFenseROI.zMax);
-	pass.setIndices(indicesROI);
-	pass.filter(indicesROI->indices);
-
-	if (!segmentStatus)
+	thisD435->FindFenseCorner(HORIZONAL_FENSE, mode);
+	
+	while(thisD435->RotatedMatrix.size() == 0)
 	{
-		return;
+		cout << "wait" << endl;
 	}
-	// Creating the KdTree object for the search method of the extraction
-	pcl::search::KdTree<pointType>::Ptr tree(new pcl::search::KdTree<pointType>);
-	tree->setInputCloud(verticalCloud);
+	thisD435->mutex3.lock();
+	cout << "got coeff" << endl;
+	thisD435->GetyawAngle(thisD435->linePt1,thisD435->linePt2,HORIZONAL_FENSE);
 
-	std::vector<pcl::PointIndices> clusterIndices;
-	pcl::PointIndices::Ptr largestIndice(new pcl::PointIndices);
+	frontFenseDist = thisD435->GetDepth(thisD435->fenseCorner, thisD435->fenseCornerIn3D);
 
-	//-- Perform euclidean cluster extraction
-	pcl::EuclideanClusterExtraction<pointType> ec;
-	ec.setClusterTolerance(0.1);
-	ec.setMinClusterSize(100);
-	ec.setMaxClusterSize(25000);
-	ec.setSearchMethod(tree);
-	ec.setInputCloud(verticalCloud);
-	ec.setIndices(indicesROI);
-	ec.extract(clusterIndices);
+	thisD435->groundCoffQueue.pop();
+	thisD435->RotatedMatrix.pop();
+	thisD435->mutex3.unlock();
+	besideFenseDist = mode == LEFT_MODE ? fenseCorner2fenseDist - thisD435->nowXpos : fenseCorner2fenseDist + thisD435->nowXpos;
 
-	for (int i = 0; i < clusterIndices.size(); i++)
-	{
-		if (clusterIndices[i].indices.size() > largestIndice->indices.size())
-		{
-			*largestIndice = clusterIndices[i];
-		}
-	}
-	pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
-	pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
-
-	pcl::SACSegmentation<pointType> seg;
-	seg.setOptimizeCoefficients(true);
-	seg.setModelType(pcl::SACMODEL_PLANE);
-	seg.setMethodType(pcl::SAC_RANSAC);
-	seg.setDistanceThreshold(0.01);
-	seg.setIndices(largestIndice);
-
-	seg.setInputCloud(verticalCloud);
-	seg.segment(*inliers, *coefficients);
-
-	if (!segmentStatus)
-	{
-		return;
-	}
-	if (!mode)
-	{
-		frontFenseROI = updateObjectROI(verticalCloud, inliers, 0.7, 0.0, 0.2, 0.2, true, true, frontFenseROI);
-	}
-	else
-	{
-		frontFenseROI = updateObjectROI(verticalCloud, inliers, 0.0, 0.7, 0.2, 0.2, true, true, frontFenseROI);
-	}
-
-
-
-	double frountdDistance = calculateDistance(groundCoeffRotated, coefficients);
-
-	Eigen::Vector4f minVector, maxVector;
-	pcl::getMinMax3D(*verticalCloud, *inliers, minVector, maxVector);
-
-	//-- Calculate the vertical distance to front fense
-	double fenseDistance = minVector[2];
-
-	if (fenseDistance < 0.8f) { nextStatusCounter++; }
+	lateralDist = besideFenseDist;
+	frontDist = frontFenseDist + carWidth;
+	cout << "linept1: " << thisD435->linePt1.x << " " << thisD435->linePt1.y << "linept2: " << thisD435->linePt2.x << " " << thisD435->linePt2.y << endl;
+	dbStatus = 2;
+	if (frontFenseDist < 1550) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
-	if (nextStatusCounter >= 3) { status++; }
-
+	if (nextStatusCounter >= 2) { status++; thisD435->status = status;}
+	
 #ifdef DEBUG
-	  //-- Change the color of the extracted part for debuging
-	  for (int i = 0; i < inliers->indices.size(); i++)
-	  {
-		  dstCloud->points[inliers->indices[i]].r = 251;
-		  dstCloud->points[inliers->indices[i]].g = 188;
-		  dstCloud->points[inliers->indices[i]].b = 5;
-	  }
-
-	  cout << "front fense distance  " << fenseDistance << " second " << frountdDistance << endl;
-
-	  dstViewer->updatePointCloud(forGroundCloud, "ground Cloud");
-	  dstViewer->updatePointCloud(dstCloud, "Destination Cloud");
-	  dstViewer->spinOnce(1);
+	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
+	dstViewer->spinOnce(1);
+	cout << "status: " << status << "\n" << endl;
+	cout << "front fense distance  " << frontFenseDist << "  besideFenseDist " << besideFenseDist << endl;
+	cout << thisD435->srcImageQueue.size() << endl;
+	cout << thisD435->RotatedMatrix.size() << endl;
 #endif
-
 }
 
 void RobotLocator::locateBeforeGrasslandStage1(void)
@@ -1108,7 +1084,9 @@ void RobotLocator::locateBeforeGrasslandStage1(void)
 	thisD435->mutex3.lock();
 	cout << "got coeff" << endl;
 	thisD435->GetyawAngle(thisD435->linePt1,thisD435->linePt2,HORIZONAL_FENSE);
+
 	frontFenseDist = thisD435->GetDepth(thisD435->fenseCorner, thisD435->fenseCornerIn3D);
+
 	thisD435->groundCoffQueue.pop();
 	thisD435->RotatedMatrix.pop();
 	thisD435->mutex3.unlock();
@@ -1116,16 +1094,16 @@ void RobotLocator::locateBeforeGrasslandStage1(void)
 
 	lateralDist = besideFenseDist;
 	frontDist = frontFenseDist + carWidth;
-
+	cout << "linept1: " << thisD435->linePt1.x << " " << thisD435->linePt1.y << "linept2: " << thisD435->linePt2.x << " " << thisD435->linePt2.y << endl;
 	dbStatus = 2;
-	if (besideFenseDist < 1600) { nextStatusCounter++; }
+	if (besideFenseDist < 1600 && besideFenseDist > 1400 && frontFenseDist < 1000 && frontFenseDist > 500) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
 	if (nextStatusCounter >= 2) { status++; thisD435->status = status;}
 	
 #ifdef DEBUG
-	//dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
-	//dstViewer->spinOnce(1);
+	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
+	dstViewer->spinOnce(1);
 	cout << "status: " << status << "\n" << endl;
 	cout << "front fense distance  " << frontFenseDist << "  besideFenseDist " << besideFenseDist << endl;
 	cout << thisD435->srcImageQueue.size() << endl;
@@ -1160,17 +1138,17 @@ void RobotLocator::locateBeforeGrasslandStage2(void)
 	frontDist = secondRopeDist;
 
 	dbStatus = 3;
-	if (secondRopeDist < 700 && thisD435->pillarStatus != 1) { nextStatusCounter++; }
+	if (secondRopeDist < 700 && thisD435->pillarStatus != 1 && secondRopeDist > 300 && besideFenseDist > 550 && besideFenseDist < 900) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
-	//if (nextStatusCounter >= 2) { status ++; thisD435->status ++; colorFrameRoi = mode == LEFT_MODE ? rightRoi : leftRoi;}
+	if (nextStatusCounter >= 2) { status ++; thisD435->status ++; colorFrameRoi = mode == LEFT_MODE ? rightRoi : leftRoi;}
 #ifdef DEBUG
 	cout << "status: " << status << "\n" << endl;
 	cout << "secondRopeDist: " << secondRopeDist << " besideFenseDist: " << besideFenseDist << endl;
 	cout << thisD435->srcImageQueue.size() << endl;
 	cout << thisD435->RotatedMatrix.size() << endl;
-	//dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
-	//dstViewer->spinOnce(1);
+	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
+	dstViewer->spinOnce(1);
 #endif // DEBUG
 }
 void RobotLocator::locatePassingGrasslandStage1(void)
@@ -1232,7 +1210,7 @@ void RobotLocator::locateUnderMountain(void)
 	}
 	thisD435->mutex3.lock();
 	cout << "got coeff" << endl;
-	thisD435->GetyawAngle(thisD435->linePt1,thisD435->linePt2,HORIZONAL_FENSE);
+	thisD435->GetyawAngle(thisD435->linePt1,thisD435->linePt2,VERTICAL_FENSE);
 	frontFenseDist = thisD435->GetDepth(thisD435->lineEnd, thisD435->lineEndIn3D) + carWidth;
 	thisD435->groundCoffQueue.pop();
 	thisD435->RotatedMatrix.pop();

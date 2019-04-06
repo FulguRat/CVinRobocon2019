@@ -12,7 +12,6 @@
 #include <Eigen/Dense>
 #include <mutex>
 #include <queue>
-#include <condition_variable>
 
 #include "mb_cuda/common/point_types.h"
 #include "mb_cuda/io/pcl_thrust.h"
@@ -20,7 +19,7 @@
 #include "mb_cuda/filters/pass_through.h"
 #include "mb_cuda/filters/voxel_grid.h"
 #include "mb_cuda/filters/statistical_outlier_removal.h"
-#include <librealsense2/rsutil.h>
+
 extern int mode;
 extern int dbStatus;
 #define DEBUG
@@ -39,9 +38,9 @@ extern int dbStatus;
 #define BEFORE_GRASSLAND_STAGE_2	6
 #define UNDER_MOUNTAIN				7
 #define BONE_RECOGNITION			8
+#define BONE_RECOGNITION_1                      81
 #define CLIMBING_MOUNTAIN           9
 #define REACH_MOUNTAIN				10
-#define WAIT_STATUS                             11
 
 #define CAMERA_ARGS_LEFT  { 619.817, 619.787,    /*Focal Length*/ \
 							330.33,  242.407,    /*Principal Point*/ \
@@ -162,12 +161,10 @@ private:
 
 	//-- For point cloud without color
 	mb_cuda::thrustCloudT pointsToPointCloud(const rs2::points& points);
-	pPointCloud pointsToPCLPointCloud(const rs2::points& points);
 public:
 	std::mutex mutex1;
 	std::mutex mutex2;
 	std::mutex mutex3;
-	condition_variable cond;
 	vector<cv::Vec4i> filterLine;
 	vector<float> groundCoeff;
 	queue<cv::Mat> srcImageQueue;
@@ -191,7 +188,6 @@ public:
 
 	bool initFlag = true;
 	bool pointCloudUpdateFlag = false;
-	bool xkFlag = false;
 	bool lineFoundFlag;
 	float nowXpos;
 	float nowZpos;
@@ -206,15 +202,9 @@ public:
 	unsigned int status = BEFORE_GRASSLAND_STAGE_1;
 
 	mb_cuda::thrustCloudT sourceThrust;
-	pPointCloud		 cloudByRS2;
 private:
 
-	uint16_t* data;
-
-	rs2_intrinsics color_intrin;
-	rs2_intrinsics depth_intrin;
-	rs2_extrinsics depth2color_extrin;
-	rs2_extrinsics color2depth_extrin;
+	
 	rs2::pointcloud  rs2Cloud;
 	rs2::points      rs2Points;
 
@@ -226,7 +216,7 @@ private:
 
 	rs2::align       align;
 
-	
+	pPointCloud		 cloudByRS2;
 
 	//opencv module
 
@@ -251,7 +241,6 @@ private:
 
 	cv::Mat grayImage;
 	cv::Mat LABImage;
-	cv::Mat HSVImage;
 	vector<cv::Mat> channels;
 	cv::Mat srcImage;
 	cv::Mat maskImage;

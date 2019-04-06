@@ -13,7 +13,7 @@
 void GetStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGround);
 
 void UpdateStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGround);
-void SendDatas(serial::Serial *my_serial, int status, float frountData, float lateralDatas,float time);
+void SendDatas(serial::Serial *my_serial, int status, float frountData, float lateralDatas);
 void CopyData(uint8_t* origen, uint8_t* afterTreat, int size);
 
 
