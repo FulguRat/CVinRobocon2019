@@ -96,12 +96,13 @@ void GetStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGround
 	  }
 	}
 }
+cv::TickMeter tmHa;
 void UpdateStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGround)
 {
 	uint8_t serialData[8];
 	int step = 0;
 	int wileFlag = 1;
-	static unsigned int noConnectTime = 0;
+	double noConnectTime = 0;
         static unsigned int storedStatus = 0;
 
 	while(wileFlag)
@@ -140,7 +141,7 @@ void UpdateStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGro
 		switch(serialData[5])
 		{
 			case '0':
-                           noConnectTime = 0;
+                           tmHa.reset();
                            *runStatus = BEFORE_DUNE_STAGE_1;
                            step = 4;
 			break;
@@ -177,6 +178,7 @@ void UpdateStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGro
                            step = 4;
 			break;
 			case 'c':
+			   tmHa.reset();
 			   noConnectTime = 0;
                            std::cout << "connect ok\n";
 			   //if(*runStatus == WAIT_STATUS)
@@ -203,14 +205,14 @@ void UpdateStatus(serial::Serial *my_serial,unsigned int *runStatus,int *playGro
 	    break;
 	  }
 	}
+	tmHa.stop();
+	noConnectTime = tmHa.getTimeSec();
+	tmHa.start();
 	std::cout << "noConnectTime: " << noConnectTime;
-	if(noConnectTime > 35)
+	if(noConnectTime > 5)
 	{
 	  std::cout << "enter waitmain\n";
 	  *runStatus = WAIT_STATUS;
-	}else
-	{			
-	  noConnectTime ++;
 	}
 }
 union dataUnion
