@@ -139,6 +139,7 @@ void RobotLocator::cloudPointPreprocess(void)
 	int count = 0; 
 	std::unique_lock<std::mutex> lk(thisD435->mutex2);
         thisD435->cond.wait(lk, [this]{return thisD435->xkFlag;});
+	lk.unlock();
 	while (true)
 	{
 		count ++;
@@ -150,22 +151,23 @@ void RobotLocator::cloudPointPreprocess(void)
 		passVG.setInputCloud(thisD435->cloudByRS2);
 		passVG.setLeafSize(0.025f, 0.025f, 0.025f);
 		passVG.filter(*forGroundCloud);		
-	
+		
 		extractGroundCoeff(forGroundCloud);
 		rotatePointCloudToHorizontal(forGroundCloud);
 		stop = chrono::steady_clock::now();
 		auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
 		cout << "thread2 Time: : " << double(totalTime.count()) / 1000.0f << endl;
 		cout << "thread2 Cnt: " << count << endl;
-		
 		lk.lock();
 		if(thisD435->xkFlag == false)
 			breakFlag = 1;
 		else
 			breakFlag = 0;
-		lk.unlock();
+		
 		if(breakFlag)
 			thisD435->cond.wait(lk, [this]{return thisD435->xkFlag;});
+		lk.unlock();
+
 	}
 
 }
@@ -271,18 +273,29 @@ bool RobotLocator::extractGroundCoeff(pPointCloud cloud)
 	}
 	else
 	{
-		thisD435->groundCoeff[0] = coefficients->values[0];
-		thisD435->groundCoeff[1] = coefficients->values[1];
-		thisD435->groundCoeff[2] = coefficients->values[2];
-		thisD435->groundCoeff[3] = coefficients->values[3];
-		if(status == BEFORE_GRASSLAND_STAGE_1)
+		if (angleCosine > 0.8f)
 		{
-			if(thisD435->groundCoeff[3] < 0.51)
-				thisD435->groundCoeff[3] += 0.1;
+			thisD435->groundCoeff[0] = coefficients->values[0];
+			thisD435->groundCoeff[1] = coefficients->values[1];
+			thisD435->groundCoeff[2] = coefficients->values[2];
+			thisD435->groundCoeff[3] = coefficients->values[3];
+			if(status == BEFORE_GRASSLAND_STAGE_1)
+			{
+				if(thisD435->groundCoeff[3] < 0.51)
+					thisD435->groundCoeff[3] += 0.1;
+			}
+			thisD435->mutex3.lock();
+			thisD435->groundCoffQueue.push(thisD435->groundCoeff);
+			thisD435->mutex3.unlock();
+		
 		}
-		thisD435->mutex3.lock();
-		thisD435->groundCoffQueue.push(thisD435->groundCoeff);
-		thisD435->mutex3.unlock();
+		else
+		{
+			thisD435->mutex3.lock();
+			thisD435->groundCoffQueue.push(thisD435->groundCoeff);
+			thisD435->mutex3.unlock();
+		}
+		
 	}
 #ifdef DEBUG
 	for (int i = 0; i < inliers->indices.size(); i++)
@@ -1036,7 +1049,10 @@ void RobotLocator::locatePassingDune(void)
 {
 	thisD435->imgProcess();
 
-	thisD435->FindFenseCorner(HORIZONAL_FENSE, mode);
+	if (frontFenseDist < 100 || frontFenseDist > 1000)
+		thisD435->FindHorizonalHoughLine(thisD435->grayImage, 1);
+	else
+		thisD435->FindHorizonalHoughLine(thisD435->grayImage, 2);
 	
 	while(thisD435->RotatedMatrix.size() == 0)
 	{
@@ -1046,18 +1062,26 @@ void RobotLocator::locatePassingDune(void)
 	cout << "got coeff" << endl;
 	thisD435->GetyawAngle(thisD435->linePt1,thisD435->linePt2,HORIZONAL_FENSE);
 
-	frontFenseDist = thisD435->GetDepth(thisD435->fenseCorner, thisD435->fenseCornerIn3D);
+	frontFenseDist = 0;
+
+	for (int i = 0; i < thisD435->linePoints.size(); ++i)
+	{
+		frontFenseDist += thisD435->GetDepth(thisD435->linePoints[i], thisD435->fenseCornerIn3D) / thisD435->linePoints.size();
+	}
 
 	thisD435->groundCoffQueue.pop();
 	thisD435->RotatedMatrix.pop();
 	thisD435->mutex3.unlock();
-	besideFenseDist = mode == LEFT_MODE ? fenseCorner2fenseDist - thisD435->nowXpos : fenseCorner2fenseDist + thisD435->nowXpos;
-
-	lateralDist = besideFenseDist;
-	frontDist = frontFenseDist + carWidth;
+	
+	if(mode == LEFT_MODE)
+		frontDist = frontFenseDist - line2LeftDuneDist;
+	else
+		frontDist = frontFenseDist - line2RightDuneDist;
+	lateralDist = 0;
+	
 	cout << "linept1: " << thisD435->linePt1.x << " " << thisD435->linePt1.y << "linept2: " << thisD435->linePt2.x << " " << thisD435->linePt2.y << endl;
-	dbStatus = 2;
-	if (frontFenseDist < 1550) { nextStatusCounter++; }
+	dbStatus = 1;
+	if (frontFenseDist < 800 && frontFenseDist > 600) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
 	if (nextStatusCounter >= 2) { status++; thisD435->status = status;}
@@ -1066,7 +1090,7 @@ void RobotLocator::locatePassingDune(void)
 	dstViewer->updatePointCloud(forGroundCloud, "Destination Cloud");
 	dstViewer->spinOnce(1);
 	cout << "status: " << status << "\n" << endl;
-	cout << "front fense distance  " << frontFenseDist << "  besideFenseDist " << besideFenseDist << endl;
+	cout << "Dune distance  " << frontDist << "  besideFenseDist " << besideFenseDist << endl;
 	cout << thisD435->srcImageQueue.size() << endl;
 	cout << thisD435->RotatedMatrix.size() << endl;
 #endif
@@ -1091,9 +1115,16 @@ void RobotLocator::locateBeforeGrasslandStage1(void)
 	thisD435->RotatedMatrix.pop();
 	thisD435->mutex3.unlock();
 	besideFenseDist = mode == LEFT_MODE ? fenseCorner2fenseDist - thisD435->nowXpos : fenseCorner2fenseDist + thisD435->nowXpos;
-
-	lateralDist = besideFenseDist;
-	frontDist = frontFenseDist + carWidth;
+	if(thisD435->lineFoundFlag)
+	{
+		lateralDist = besideFenseDist;
+		frontDist = frontFenseDist;
+	}
+	else
+	{
+		lateralDist = 0;
+		frontDist = 0;
+	}
 	cout << "linept1: " << thisD435->linePt1.x << " " << thisD435->linePt1.y << "linept2: " << thisD435->linePt2.x << " " << thisD435->linePt2.y << endl;
 	dbStatus = 2;
 	if (besideFenseDist < 1600 && besideFenseDist > 1400 && frontFenseDist < 1000 && frontFenseDist > 500) { nextStatusCounter++; }
@@ -1113,7 +1144,6 @@ void RobotLocator::locateBeforeGrasslandStage1(void)
 void RobotLocator::locateBeforeGrasslandStage2(void)
 {
 	thisD435->imgProcess();
-
 
 	while(thisD435->RotatedMatrix.size() == 0)
 	{
@@ -1138,10 +1168,10 @@ void RobotLocator::locateBeforeGrasslandStage2(void)
 	frontDist = secondRopeDist;
 
 	dbStatus = 3;
-	if (secondRopeDist < 700 && thisD435->pillarStatus != 1 && secondRopeDist > 300 && besideFenseDist > 550 && besideFenseDist < 900) { nextStatusCounter++; }
+	if (besideFenseDist > 550 && besideFenseDist < 850 && secondRopeDist > 500 && secondRopeDist < 2000) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
-	if (nextStatusCounter >= 2) { status ++; thisD435->status ++; colorFrameRoi = mode == LEFT_MODE ? rightRoi : leftRoi;}
+	if (nextStatusCounter >= 2) { status ++; thisD435->status ++;}
 #ifdef DEBUG
 	cout << "status: " << status << "\n" << endl;
 	cout << "secondRopeDist: " << secondRopeDist << " besideFenseDist: " << besideFenseDist << endl;
@@ -1153,17 +1183,32 @@ void RobotLocator::locateBeforeGrasslandStage2(void)
 }
 void RobotLocator::locatePassingGrasslandStage1(void)
 {
-	extractGroundCoeff(forGroundCloud);
-	rotatePointCloudToHorizontal(forGroundCloud);
 	thisD435->imgProcess();
 
-	thisD435->FindLineCrossCenter(10.0, 1.0, 40.0);
+	if (secondRopeDist > 800)
+		thisD435->FindVerticalHoughLine(thisD435->grayImage);
+	else
+		thisD435->FindVerticalHoughLine(thisD435->grayImage, 1);
 
-	secondRopeDist = thisD435->GetDepth(thisD435->lineCross, thisD435->lineCrossIn3D) - lineCross2RopeDist;
-	besideFenseDist = mode == LEFT_MODE ? line2BesidefenseDist - thisD435->nowXpos : line2BesidefenseDist + thisD435->nowXpos;
-	frontFenseDist = thisD435->GetDepth(thisD435->fenseCorner, thisD435->fenseCornerIn3D) + lineCross2FrontfenseDist;
+	while (thisD435->RotatedMatrix.size() == 0)
+	{
+	}
+	thisD435->mutex3.lock();
+	cout << "got coeff" << endl;
+	thisD435->GetyawAngle(thisD435->linePt1, thisD435->linePt2, VERTICAL_FENSE);
+	secondRopeDist = thisD435->GetDepth(thisD435->center2, thisD435->center2In3D);
+	thisD435->groundCoffQueue.pop();
+	thisD435->RotatedMatrix.pop();
+	thisD435->mutex3.unlock();
 
-	if (frontFenseDist < 1200) { nextStatusCounter++; }
+	besideFenseDist = mode == LEFT_MODE ? (pillarRadius - thisD435->nowXpos) : (pillarRadius + thisD435->nowXpos);
+
+	lateralDist = besideFenseDist;
+	frontDist = secondRopeDist;
+
+	dbStatus = 3;
+
+	if (secondRopeDist < 500 && secondRopeDist > 300) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 	
 	if (nextStatusCounter >= 2) { status+=2; thisD435->status+=2; }
@@ -1178,17 +1223,28 @@ void RobotLocator::locatePassingGrasslandStage1(void)
 
 void RobotLocator::locatePassingGrasslandStage2(void)
 {
-
-	extractGroundCoeff(forGroundCloud);
-	rotatePointCloudToHorizontal(forGroundCloud);
 	thisD435->imgProcess();
+	
+	while (thisD435->RotatedMatrix.size() == 0)
+	{
+	}
+	thisD435->mutex3.lock();
+	cout << "got coeff" << endl;
+	thisD435->GetyawAngle(thisD435->linePt1, thisD435->linePt2, VERTICAL_FENSE);
+	frontFenseDist = thisD435->GetDepth(thisD435->lineCross, thisD435->lineCrossIn3D);
+	thisD435->groundCoffQueue.pop();
+	thisD435->RotatedMatrix.pop();
+	thisD435->mutex3.unlock();
 
-	thisD435->FindLineEnd();
+	besideFenseDist = mode == LEFT_MODE ? -thisD435->nowXpos : thisD435->nowXpos;
+	secondRopeDist = frontFenseDist - lineCross2RopeDist;
 
-	frontFenseDist = thisD435->GetDepth(thisD435->lineEnd, thisD435->lineEndIn3D);
-	besideFenseDist = mode == LEFT_MODE ? line2BesidefenseDist - thisD435->nowXpos : line2BesidefenseDist + thisD435->nowXpos;
+	lateralDist = besideFenseDist;
+	frontDist = secondRopeDist;
 
-	if (frontFenseDist < 1000) { nextStatusCounter++; }
+	dbStatus = 3;
+
+	if (besideFenseDist > 650 && besideFenseDist < 850) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
 	if (nextStatusCounter >= 2) { status++; thisD435->status++; }
@@ -1211,13 +1267,13 @@ void RobotLocator::locateUnderMountain(void)
 	thisD435->mutex3.lock();
 	cout << "got coeff" << endl;
 	thisD435->GetyawAngle(thisD435->linePt1,thisD435->linePt2,VERTICAL_FENSE);
-	frontFenseDist = thisD435->GetDepth(thisD435->lineEnd, thisD435->lineEndIn3D) + carWidth;
+	frontFenseDist = thisD435->GetDepth(thisD435->lineEnd, thisD435->lineEndIn3D);
 	thisD435->groundCoffQueue.pop();
 	thisD435->RotatedMatrix.pop();
 	thisD435->mutex3.unlock();
 	besideFenseDist = mode == LEFT_MODE ? lineEnd2BesidefenseDist - thisD435->nowXpos : lineEnd2BesidefenseDist + thisD435->nowXpos;
 
-	if (frontFenseDist > lineEnd2secondRopeDist)
+	if (frontFenseDist > lineEnd2secondRopeDist - 310)
 	{
 		frontFenseDist -= lineEnd2secondRopeDist;
 		dbStatus = 3;
@@ -1227,8 +1283,6 @@ void RobotLocator::locateUnderMountain(void)
 		dbStatus = 4;
 		besideFenseDist = 1440 - besideFenseDist;
 	}
-	if (besideFenseDist > 850 && frontFenseDist < 800)
-		colorFrameRoi = mode == LEFT_MODE ? leftRoi : rightRoi;
 	//ͣ��
 	lateralDist = besideFenseDist;
 	frontDist = frontFenseDist;
@@ -1292,7 +1346,7 @@ void RobotLocator::locateClimbingMountain(void)
 		break;
 	}
 	lateralDist = peakDist;
-	frontDist = frontFenseDist + carWidth;
+	frontDist = frontFenseDist;
 	if (stageJudge == 3 && thisD435->filterLine.size() != 2) { nextStatusCounter++; }
 	else { nextStatusCounter = 0; }
 
@@ -1328,7 +1382,7 @@ void RobotLocator::locateReachingMountain(void)
 	else
 		peakDist = 0;
 	lateralDist = peakDist;
-	frontDist = frontFenseDist + carWidth;
+	frontDist = frontFenseDist;
 
 	dbStatus = 7;
 	if (0) { nextStatusCounter++; }

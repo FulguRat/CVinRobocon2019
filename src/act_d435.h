@@ -37,11 +37,13 @@ extern int dbStatus;
 #define PASSING_DUNE                4
 #define BEFORE_GRASSLAND_STAGE_1	5
 #define BEFORE_GRASSLAND_STAGE_2	6
-#define UNDER_MOUNTAIN				7
-#define BONE_RECOGNITION			8
-#define CLIMBING_MOUNTAIN           9
-#define REACH_MOUNTAIN				10
-#define WAIT_STATUS                             11
+#define PASSING_GRASSLAND_STAGE_1	7
+#define PASSING_GRASSLAND_STAGE_2	8
+#define UNDER_MOUNTAIN				9
+#define BONE_RECOGNITION			10
+#define CLIMBING_MOUNTAIN           11
+#define REACH_MOUNTAIN				12
+#define WAIT_STATUS                 13
 
 #define CAMERA_ARGS_LEFT  { 619.817, 619.787,    /*Focal Length*/ \
 							330.33,  242.407,    /*Principal Point*/ \
@@ -67,13 +69,14 @@ enum roiFlag {
 };
 
 extern enum roiFlag colorFrameRoi;
-const float carWidth = 0;
-const float lineEnd2secondRopeDist = 1580;
+const float line2LeftDuneDist = 985;
+const float line2RightDuneDist = 1015;
+const float lineEnd2secondRopeDist = 1620;
 const float fenseCorner2fenseDist = 1440;
 const float lineCross2RopeDist = 860;
 const float lineCross2FrontfenseDist = 850;
 const float line2BesidefenseDist = 715;
-const float lineEnd2BesidefenseDist = 710;
+const float lineEnd2BesidefenseDist = 730;
 const float mountainDist = 1650;
 const float pillar2leftFenseDist = 80;
 const float pillarRadius = 80;
@@ -99,6 +102,7 @@ struct houghLine
 {
 	float lineAngle = 0;
 	float distance = 0;
+	float intercept = 0;
 	float lineSlop = 0;
 	int index = 0;
 
@@ -106,6 +110,7 @@ struct houghLine
 	{
 		lineAngle = s1.lineAngle;
 		distance = s1.distance;
+		intercept = s1.intercept;
 		lineSlop = s1.lineSlop;
 		index = s1.index;
 		return *this;
@@ -142,17 +147,18 @@ public:
 	void FindLineCross(void);
 	void FindLineEnd(void);
 	cv::Point GetCrossPoint(cv::Point pt1, cv::Point pt2, cv::Point pt3, cv::Point pt4);
-	cv::Point SetSeedPoint(void);
+	cv::Point SetSeedPoint(cv::Mat& src);
 	int ClimbingMountainStageJudge(void);
 	bool MatchLine(vector<cv::Vec4i>& src, vector<cv::Vec4i>& dst, float angleThresh, float minDistThresh, float maxDistThresh);
 	void FindHoughLineCross(void);
-	void FindVerticalHoughLine(cv::Mat& src);
-	void FindLineCrossCenter(float angleThresh, float minDistThresh, float maxDistThresh);
-	void FindHorizonalHoughLine(cv::Mat& src);
+	void FindVerticalHoughLine(cv::Mat& src, int flag = 0);
+	void FindLineCrossCenter(cv::Mat& src, int flag = 0);
+	void FindHorizonalHoughLine(cv::Mat& src,int flag = 0);
 	float GetDepth(cv::Point2f& pt, cv::Point3f& pt1);
 	float GetyawAngle(const cv::Point2f& pt1, const cv::Point2f& pt2, int fenseType);
 	cv::Point3f GetIrCorrdinate(cv::Point2f pt);
-
+	double getThreshVal_Otsu_8u_mask(const cv::Mat src, const cv::Mat& mask);
+	void threshold_with_mask(cv::Mat& src, cv::Mat& dst, cv::Mat& mask, int type);
 
 
 private:
@@ -175,6 +181,8 @@ public:
 	queue<Eigen::Matrix3f> RotatedMatrix;
 	cv::Point2f linePt1;
 	cv::Point2f linePt2;
+	cv::Point2f linePoint1;
+	cv::Point2f linePoint2;
 	cv::Point2f pillarLeftUpPt;
 	cv::Point2f center1 = cv::Point2f(0, 0);
 	cv::Point2f center2 = cv::Point2f(0, 0);
@@ -187,12 +195,16 @@ public:
 	cv::Point3f lineEndIn3D = cv::Point3f(0, 0, 0);
 	cv::Point3f lineCrossIn3D = cv::Point3f(0, 0, 0);
 
+	cv::Point searchBeginPoint;
 	cv::Point seedPoint;
-
+	vector<cv::Point2f> linePoints;
+	bool farLineFlag = false;
 	bool initFlag = true;
 	bool pointCloudUpdateFlag = false;
 	bool xkFlag = false;
 	bool lineFoundFlag;
+	float lineSlop;
+	float intercept;
 	float nowXpos;
 	float nowZpos;
 	float angle;
@@ -207,6 +219,8 @@ public:
 
 	mb_cuda::thrustCloudT sourceThrust;
 	pPointCloud		 cloudByRS2;
+
+	cv::Mat grayImage;
 private:
 
 	uint16_t* data;
@@ -249,7 +263,7 @@ private:
 	cv::Mat channelL;
 	cv::Mat channelA;
 
-	cv::Mat grayImage;
+	
 	cv::Mat LABImage;
 	cv::Mat HSVImage;
 	vector<cv::Mat> channels;

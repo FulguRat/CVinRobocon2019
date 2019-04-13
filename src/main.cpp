@@ -52,7 +52,7 @@ int main(int argc, char* argv[])
     	// openVINO init
     	std::cout << "openvino init\n";
     	TensorRT tensorRT(argc,argv,mode);
-
+	
     	// camera init
     	std::cout << "camera init\n";
     	// playground-1 only want to be test
@@ -84,7 +84,7 @@ int main(int argc, char* argv[])
 		{
 			
 			case STARTUP_INITIAL:
-				fajLocator.status = BEFORE_DUNE_STAGE_1;
+				fajLocator.status = BEFORE_GRASSLAND_STAGE_1;
 				if (fajLocator.status < PASSING_DUNE)
 					fajD435.status = PASSING_DUNE;
 				else
@@ -123,6 +123,14 @@ int main(int argc, char* argv[])
 				fajLocator.locateBeforeGrasslandStage2();
 				break;
 
+			case PASSING_GRASSLAND_STAGE_1:
+				fajLocator.locatePassingGrasslandStage1();
+				break;
+
+			case PASSING_GRASSLAND_STAGE_2:
+				fajLocator.locatePassingGrasslandStage2();
+				break;
+
 			case UNDER_MOUNTAIN:
 				fajLocator.locateUnderMountain();
 				break;
@@ -138,6 +146,7 @@ int main(int argc, char* argv[])
                                 if(0)
 				{
 				  fajLocator.status = CLIMBING_MOUNTAIN;
+				  fajD435.status = fajLocator.status;
                                   tensorRT.freeTensor();
                                   my_serial.write("go\r\n");
                                 }
@@ -151,6 +160,7 @@ int main(int argc, char* argv[])
 				break;
 			case WAIT_STATUS:
 			{
+#ifdef __linux__
 				std::cout << "waitmain...\n";
 				UpdateStatus(serialPtr,&fajLocator.status,&mode);
 				std::unique_lock<std::mutex> lk(fajD435.mutex2);
@@ -165,7 +175,6 @@ int main(int argc, char* argv[])
 					else
 					{
 						fajD435.status = fajLocator.status;
-						std::unique_lock<std::mutex> lk(fajD435.mutex2);
 						fajD435.xkFlag = true;
 						cout << "xkFLag true" << endl;
 						lk.unlock();
@@ -178,6 +187,7 @@ int main(int argc, char* argv[])
 					fajD435.xkFlag = false;
 					lk.unlock();
 				}
+#endif
 			}
 				
 			break;
@@ -194,7 +204,7 @@ int main(int argc, char* argv[])
 		//frontDist=200.0f;
 		//if(status <= 4)
 		//	xdistance=distancefilter.predictAndCorrect(Mat_<float>(1, 1)<<fajLocator.diatancemeasurement).at<float>(0,0);
-		if (fajLocator.status!=0 && fajLocator.status != 8&&fajLocator.status != WAIT_STATUS)
+		if (fajLocator.status != STARTUP_INITIAL && fajLocator.status != BONE_RECOGNITION && fajLocator.status != WAIT_STATUS)
 		{
 			SendDatas(serialPtr, dbStatus, frontDist, lateralDist, float(totalTime.count())/1000.0f);
 		}
