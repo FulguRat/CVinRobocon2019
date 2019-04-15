@@ -13,7 +13,7 @@
 #include <mutex>
 #include <queue>
 #include <condition_variable>
-
+#include <thread>
 #include "mb_cuda/common/point_types.h"
 #include "mb_cuda/io/pcl_thrust.h"
 #include "mb_cuda/io/host_device.h"
@@ -21,7 +21,7 @@
 #include "mb_cuda/filters/voxel_grid.h"
 #include "mb_cuda/filters/statistical_outlier_removal.h"
 #include <librealsense2/rsutil.h>
-extern int mode;
+extern int mode; 
 extern int dbStatus;
 #define DEBUG
 #define LEFT_MODE		0
@@ -69,6 +69,7 @@ enum roiFlag {
 };
 
 extern enum roiFlag colorFrameRoi;
+const float duneLine2FenseDist = 840;
 const float line2LeftDuneDist = 985;
 const float line2RightDuneDist = 1015;
 const float lineEnd2secondRopeDist = 1620;
@@ -117,6 +118,15 @@ struct houghLine
 	}
 
 };
+typedef struct
+{
+	double xMin;
+	double xMax;
+
+	double zMin;
+	double zMax;
+
+} ObjectROI;
 
 typedef struct houghLine HoughLine;
 
@@ -144,7 +154,7 @@ public:
 	void FindFenseCorner(int fenseType,int mode);
 	int FindPillarCenter (void);
 	void FindBinaryThresh(void);
-	void FindLineCross(void);
+	void FindLineCross(cv::Mat& src, int mode);
 	void FindLineEnd(void);
 	cv::Point GetCrossPoint(cv::Point pt1, cv::Point pt2, cv::Point pt3, cv::Point pt4);
 	cv::Point SetSeedPoint(cv::Mat& src);
@@ -159,7 +169,8 @@ public:
 	cv::Point3f GetIrCorrdinate(cv::Point2f pt);
 	double getThreshVal_Otsu_8u_mask(const cv::Mat src, const cv::Mat& mask);
 	void threshold_with_mask(cv::Mat& src, cv::Mat& dst, cv::Mat& mask, int type);
-
+	void mergeLine(vector<cv::Vec4i>& src, float angle = 5, float dist = 5);
+	void drawHoughLines(vector<cv::Vec4i>& src, cv::Mat& draw);
 
 private:
 	//-- For color-aligned point cloud
@@ -167,18 +178,24 @@ private:
 	//pPointCloud pointsToPointCloud(const rs2::points& points, const rs2::video_frame& color);
 
 	//-- For point cloud without color
-	mb_cuda::thrustCloudT pointsToPointCloud(const rs2::points& points);
+	void pointsToPointCloud(const rs2::points& points);
 	pPointCloud pointsToPCLPointCloud(const rs2::points& points);
 public:
 	std::mutex mutex1;
 	std::mutex mutex2;
 	std::mutex mutex3;
+	std::mutex mutex4;
 	condition_variable cond;
 	vector<cv::Vec4i> filterLine;
 	vector<float> groundCoeff;
 	queue<cv::Mat> srcImageQueue;
 	queue<vector<float>> groundCoffQueue;
 	queue<Eigen::Matrix3f> RotatedMatrix;
+	cv::Point2f frontTarget = cv::Point2f(0, 0);
+	cv::Point2f besideTarget = cv::Point2f(0, 0);
+	cv::Point3f frontTargetIn3D = cv::Point3f(0, 0, 0);
+	cv::Point3f besideTargetIn3D = cv::Point3f(0, 0, 0);
+
 	cv::Point2f linePt1;
 	cv::Point2f linePt2;
 	cv::Point2f linePoint1;
@@ -198,11 +215,14 @@ public:
 	cv::Point searchBeginPoint;
 	cv::Point seedPoint;
 	vector<cv::Point2f> linePoints;
+	bool targetFoundFlag = false;
 	bool farLineFlag = false;
 	bool initFlag = true;
 	bool pointCloudUpdateFlag = false;
 	bool xkFlag = false;
+	bool ifUpdate=false;
 	bool lineFoundFlag;
+	bool addDune=false;
 	float lineSlop;
 	float intercept;
 	float nowXpos;
@@ -216,9 +236,17 @@ public:
 	int pillarStatus;
 	float pillarHeight;
 	unsigned int status = BEFORE_GRASSLAND_STAGE_1;
+	float addAngle;
+	float roteAngle;
 
-	mb_cuda::thrustCloudT sourceThrust;
+	ObjectROI               duneROI;
+	ObjectROI               fenseROI;
+	ObjectROI               groundROI;
+
+	pPointCloud		 groundCloud;
 	pPointCloud		 cloudByRS2;
+	pPointCloud		 duneCloud;
+	pPointCloud		 fenseCloud;
 
 	cv::Mat grayImage;
 private:
@@ -273,6 +301,8 @@ private:
 	cv::Mat dst2Image;
 	cv::Mat firstPillarMask;
 
+	chrono::steady_clock::time_point start;
+	chrono::steady_clock::time_point stop;
 	// pcl::visualization::CloudViewer viewer;
 };
 

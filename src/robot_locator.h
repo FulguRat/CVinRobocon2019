@@ -30,18 +30,9 @@
 #include "act_d435.h"
 
 using namespace Eigen;
-
+ 
 
 //-- ROI of an object
-typedef struct
-{
-	double xMin;
-	double xMax;
-
-	double zMin;
-	double zMax;
-
-} ObjectROI;
 
 typedef struct
 {
@@ -60,19 +51,19 @@ public:
 	void init(ActD435& d435);
 
 	void updateCloud(void);
-	void updateSrcCloud(void);
 	void cloudPointPreprocess(void);
 	void preProcess(void);
+	void cloudUpdate(void);
 
 	void extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi,
 		pcl::PointIndices::Ptr indices, pcl::ModelCoefficients::Ptr coefficients);
-
+	void extractPlaneWithinROI(pPointCloud cloud, ObjectROI roi,
+		pcl::PointIndices::Ptr indices, pcl::PointIndices::Ptr cloudIndices, pcl::ModelCoefficients::Ptr coefficients);
 	bool extractGroundCoeff(pPointCloud cloud);
 
 	pPointCloud rotatePointCloudToHorizontal(pPointCloud cloud);
-	pPointCloud removeHorizontalPlane(pPointCloud cloud, bool onlyGround = false);
 
-	pPointCloud extractVerticalCloud(pPointCloud cloud);
+	void extractVerticalCloud(void);
 
 	ObjectROI updateObjectROI(pPointCloud cloud, pcl::PointIndices::Ptr indices,
 		double xMinus, double xPlus, double zMinus, double zPlus, bool ifx, bool ifz, ObjectROI beforeobjROI);
@@ -94,6 +85,7 @@ public:
 	void locateReachingMountain(void);
 	bool isStoped(void);
 	void updatemodeROI(void);
+
 	inline pPointCloud getSrcCloud(void) { return srcCloud; }
 	inline pPointCloud getFilteredCloud(void) { return filteredCloud; }
 
@@ -117,10 +109,16 @@ private:
 	robotLoc        robotLocLast;
 	pPointCloud		srcCloud;
 	pPointCloud     filteredCloud;
+	pPointCloud		dstCloud;
 	pPointCloud     verticalCloud;
-	pPointCloud     dstCloud;
 	pPointCloud		groundCloud;
 	pPointCloud		forGroundCloud;
+	pPointCloud		duneCloud;
+	pPointCloud		fenseCloud;
+	pPointCloud		duneShowCloud;
+	pPointCloud		fenseShowCloud;
+	pPointCloud		getFenseVerticalCloud;
+	pPointCloud		getDuneVerticalCloud;
 
 	pcl::ModelCoefficients::Ptr groundCoeff;
 	pcl::ModelCoefficients::Ptr groundCoeffRotated;
@@ -142,10 +140,15 @@ private:
 	float peakDist;
 	float besidebarrierDist;
 	float frontbarrierDist;
+	float rihgtOrLeft;
 
-
-	float angle;
-
+	Vector2d normalleft2d;
+	Vector2d vecXAxis2d;
+	float addAngle = 0.0f;
+	float lastAngle;
+	float PI = 3.14;
+	float angleCosine;
+	float plus_minus;
 
 	pcl::visualization::PCLVisualizer::Ptr dstViewer;
 };

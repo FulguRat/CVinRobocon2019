@@ -1,18 +1,35 @@
 #include "act_d435.h"
 
 roiFlag colorFrameRoi = midRoi;
-//int mode = LEFT_MODE;
-int mode = RIGHT_MODE;
+int mode = LEFT_MODE;
+//int mode = RIGHT_MODE;
 float frontDist;
 float lateralDist;
 int dbStatus = 0;
+pointType tmpPoint;
+float rotex;
+float rotez;
 ActD435::ActD435() : align(RS2_STREAM_COLOR),
-cloudByRS2(new pointCloud)/*,
+duneCloud(new pointCloud),
+groundCloud(new pointCloud),
+cloudByRS2(new pointCloud),
+fenseCloud(new pointCloud)/*,
 viewer("Temp Viewer")*/
 {
-	
+	if (!mode)
+	{
+		groundROI = { -0.0/*xMin*/, 0.7/*xMax*/, 0.0/*zMin*/, 1.0/*zMax*/ };
+		fenseROI ={ -0.9/*xMin*/, 0.3/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
+		duneROI = { -0.7/*xMin*/,  0.1/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
+	}
+	else
+	{
+		groundROI = { -0.7/*xMin*/, 0.0/*xMax*/, 0.0/*zMin*/, 1.0/*zMax*/ };
+		fenseROI = { -0.3/*xMin*/, 0.9/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
+		duneROI = { -0.1/*xMin*/,  0.7/*xMax*/, 0.0/*zMin*/, 2.0/*zMax*/ };
+	}
 }
-
+ 
 ActD435::~ActD435()
 {
 
@@ -67,7 +84,7 @@ void ActD435::init(void)
 
 void ActD435::update(void)
 {
-		chrono::steady_clock::time_point start;
+	chrono::steady_clock::time_point start;
 	chrono::steady_clock::time_point stop;
 	static int time = 0;
 
@@ -108,7 +125,7 @@ void ActD435::update(void)
 	}
 	srcImage = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)colorFrame.get_data(), cv::Mat::AUTO_STEP);
 	data = (uint16_t*)alignedDepthFrame.get_data();
-	if(!initFlag && xkFlag)
+	if(!initFlag)
 	{
 		mutex1.lock();
 		srcImageQueue.push(srcImage);
@@ -121,7 +138,7 @@ void ActD435::update(void)
 	//-- Generate the pointcloud and texture mappings
 	rs2Points = rs2Cloud.calculate(alignedDepthFrame);
 	if(!xkFlag)
-		sourceThrust = pointsToPointCloud(rs2Points);
+		pointsToPointCloud(rs2Points);
 	else
 		cloudByRS2 = pointsToPCLPointCloud(rs2Points);
 	stop = chrono::steady_clock::now();
@@ -146,28 +163,76 @@ void ActD435::imgProcess()
 	cvWaitKey(1);
 	switch (status)
 	{
+		case BEFORE_DUNE_STAGE_1:
+		{
+			cv::split(srcImage, channels);
+			if (mode == LEFT_MODE)
+			{
+				cv::GaussianBlur(channels[1], channelG, cv::Size(3, 3), 0);
+				cv::threshold(channelG, channelG, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU);
+				FindLineCross(channelG, mode);
+				maskImage = channelG.clone();
+			}
+			else
+			{
+				cv::GaussianBlur(channels[2], channelR, cv::Size(3, 3), 0);
+				cv::threshold(channelR, channelR, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU);
+
+				FindLineCross(channelR, mode);
+				maskImage = channelR.clone();
+			}
+		}
+		break;
+
+		case BEFORE_DUNE_STAGE_2:
+		{
+			cv::split(srcImage, channels);
+			if (mode == LEFT_MODE)
+			{
+				cv::GaussianBlur(channels[1], channelG, cv::Size(3, 3), 0);
+				cv::threshold(channelG, channelG, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU);
+				FindLineCross(channelG, mode);
+				maskImage = channelG.clone();
+			}
+			else
+			{
+				cv::GaussianBlur(channels[2], channelR, cv::Size(3, 3), 0);
+				cv::threshold(channelR, channelR, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU);
+
+				FindLineCross(channelR, mode);
+				maskImage = channelR.clone();
+			}
+		}
+		break;
+
+		case BEFORE_DUNE_STAGE_3:
+		{
+			cv::cvtColor(srcImage, LABImage, CV_BGR2Lab);
+			cv::GaussianBlur(LABImage, LABImage, cv::Size(3, 3), 0);
+			cv::split(LABImage, channels);
+			cv::threshold(channels[2], channelB, 0, 255, CV_THRESH_BINARY | CV_THRESH_OTSU);
+			FindLineCross(channelB, mode);
+			maskImage = channelB.clone();
+		}
+		break;
 		case PASSING_DUNE:
 		{
 			cv::cvtColor(srcImage, LABImage, CV_BGR2Lab);
-			cv::cvtColor(srcImage, HSVImage, CV_BGR2HSV);
-			cv::cvtColor(srcImage, grayImage, CV_BGR2GRAY);
 			cv::split(LABImage, channels);
 			cv::threshold(channels[2], channelB, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU);
-
+			
 			FindHorizonalHoughLine(channelB);
 
-			cv::split(HSVImage, channels);
-			cv::threshold(channels[1], channelS, 0, 255, CV_THRESH_BINARY | CV_THRESH_OTSU);
-			cv::threshold(grayImage, grayImage, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU);
-			FillHoles(channelS);
-			cv::imshow("channelS", channelS);
+			cv::split(srcImage, channels);
+			cv::threshold(channels[1], channelG, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU);
+			FillHoles(channelG);
+			cv::imshow("channelG", channelG);
 
-			cv::bitwise_or(channelS, grayImage, grayImage);
-
-			cv::imshow("grayImage", grayImage);
-			maskImage = grayImage.clone();
+			FindLineCross(channelG, mode);
+			maskImage = channelG.clone();
 			cvWaitKey(1);
 		}
+		
 		break;
 		case BEFORE_GRASSLAND_STAGE_1:
 		{
@@ -186,11 +251,11 @@ void ActD435::imgProcess()
 			cv::cvtColor(srcImage, HSVImage, CV_BGR2HSV);
 			cv::cvtColor(srcImage, LABImage, CV_BGR2Lab);
 			cv::split(LABImage, channels);
-
+			
 			inRange(channels[1], 0, 149, channelA);
 			inRange(channels[2], 157, 255, channelB);
 
-			//桩
+			//pillar segmentation
 			cv::bitwise_and(channelA, channelB, maskImage);
 			FillHoles(maskImage);
 #ifdef DEBUG
@@ -198,17 +263,23 @@ void ActD435::imgProcess()
 #endif // DEBUG
 			//GetyawAngle
 			pillarStatus = FindPillarCenter();
-
+			
 			if (mode == RIGHT_MODE)
 			{
-				cv::threshold(channels[2], channelB, 0, 255, CV_THRESH_BINARY_INV | CV_THRESH_OTSU);
-				cv::imshow("channelB", channelB);
-				grayImage = channelB.clone();
+				cv::Mat mask;
+				cv::Rect rect(0, 0, 640, 240);
+				cv::bitwise_not(channelB, mask);
+				mask(rect).setTo(0);
+				cv::imshow("mask", mask);
+
+				threshold_with_mask(channels[2], grayImage, mask, CV_THRESH_BINARY_INV);
 			}
 			else
 			{
 				cv::Mat mask;
+				cv::Rect rect(0, 0, 640, 240);
 				cv::bitwise_not(channelB, mask);
+				mask(rect).setTo(0);
 				cv::imshow("mask", mask);
 				threshold_with_mask(channels[2], grayImage, mask, CV_THRESH_BINARY_INV);
 			}
@@ -513,162 +584,209 @@ void ActD435::FindFenseCorner(int fenseType, int mode)
 	cout << "x: " << fenseCorner.x << " y:" << fenseCorner.y << endl;
 cout << "linex: " << line[line.size() - 7].x << " liney:" << line[line.size() - 7].y << endl;
 }
-void ActD435::FindLineCross(void)
+void ActD435::FindLineCross(cv::Mat& src, int mode)
 {
-	vector<cv::Point2f> line;
-	int begin = 0;
-	int end = 0;
-	int rows = maskImage.rows - 1;
+	static int errorTime = 0;
+	vector<cv::Vec4i> line;
+	vector<cv::Vec4i> filterLines;
+	cv::Mat canny;
+	cv::Mat lineBeforeMerge = cv::Mat::zeros(src.size(),CV_8UC1);
+	cv::Mat lineAfterMerge = cv::Mat::zeros(src.size(), CV_8UC1);
 
-	if (lineCross.y < 200)
-		rows = maskImage.rows - 100;
-
-	if (mode == LEFT_MODE)
-	{
-		begin = maskImage.cols - 1;
-		end = 0;
-		int countFlag = 0;
-		int whitePixNum = 0;
-		int whitePixNumLast = 0;
-		uchar thresh = 10;
-		do
-		{
-			int tempbegin = 0;
-			whitePixNumLast = whitePixNum;
-			whitePixNum = 0;
-			uchar* data = maskImage.ptr<uchar>(rows--);
-			for (int cols = begin; cols > end; --cols)
-			{
-				if (data[cols] == 255 && countFlag == 0)
-				{
-					tempbegin = cols;
-					countFlag = 1;
-				}
-				if (countFlag)
-				{
-					//begin count
-					if (data[cols] == 255)
-						whitePixNum++;
-					//finish count
-					else
-					{
-						countFlag = 0;
-						//update
-						if (whitePixNum < thresh)
-						{
-							continue;
-						}
-
-						if (whitePixNum > 60)
-						{
-							rows -= 20;
-							whitePixNumLast = 0;
-							break;
-						}
-
-						if (whitePixNumLast > 0 && (whitePixNum - whitePixNumLast) >= 10)
-						{
-							break;
-						}
-						else
-						{
-							if (whitePixNum > thresh)
-							{
-
-								if (tempbegin < 150 || end > tempbegin)
-								{
-									continue;
-								}
-								line.push_back(cv::Point(tempbegin, rows));
-								begin = tempbegin + 10;
-								end = cols - 10;
-								break;
-							}
-						}
-					}
-				}
-			}
-			if (begin > 639)
-				begin = 639;
-			if (end < 0)
-				end = 0;
-		} while (whitePixNum > thresh && rows > 0 && (whitePixNumLast == 0 || (whitePixNum - whitePixNumLast) < 10 || whitePixNum > 60));
-	}
+	//find line
+	Canny(src,canny, 80, 80 * 2);
+	if(status == BEFORE_DUNE_STAGE_1 || status == PASSING_DUNE || status == BEFORE_DUNE_STAGE_2)
+		cv::HoughLinesP(canny, line, 1, CV_PI / 180, 80, 40, 20);
 	else
+		cv::HoughLinesP(canny, line, 1, CV_PI / 180, 40, 10, 30);
+	//merge line
+	drawHoughLines(line, lineBeforeMerge);
+	mergeLine(line);
+	drawHoughLines(line, lineAfterMerge);
+	
+	HoughLine horizonalHoughLine;
+	HoughLine verticalHoughLine;
+	HoughLine comparedHoughLine;
+
+	//find vertical fense
+	for (size_t i = 0; i < line.size(); i++)
 	{
-		begin = 1;
-		end = maskImage.cols / 2;
+		cv::Point2f pt1, pt2;
+		pt1 = cv::Point2f(line[i][0], line[i][1]);
+		pt2 = cv::Point2f(line[i][2], line[i][3]);
 
-		int countFlag = 0;
-		int whitePixNum = 0;
-		int whitePixNumLast = 0;
-		uchar thresh = 5;
-
-		do
+		comparedHoughLine.distance = sqrt((pt2.y - pt1.y) * (pt2.y - pt1.y) + (pt2.x - pt1.x) * (pt2.x - pt1.x));
+		comparedHoughLine.index = i;
+		if (pt1.x != pt2.x)
 		{
-			int tempbegin = 0;
-			whitePixNumLast = whitePixNum;
-			whitePixNum = 0;
-			uchar* data = maskImage.ptr<uchar>(rows--);
-			for (int cols = begin; cols < end + 30; ++cols)
+			comparedHoughLine.lineSlop = static_cast<float>(pt2.y - pt1.y) / (pt2.x - pt1.x);
+			comparedHoughLine.intercept = pt1.y - comparedHoughLine.lineSlop * pt1.x;
+			comparedHoughLine.lineAngle = atan(fabs(comparedHoughLine.lineSlop)) * 180 / CV_PI;
+		}
+		else
+		{
+			comparedHoughLine.lineSlop = 0;
+			comparedHoughLine.intercept = pt2.y;
+			comparedHoughLine.lineAngle = 90;
+		}
+
+		if (comparedHoughLine.lineSlop * (2 * mode - 1) <= 0
+			||comparedHoughLine.lineAngle >= 60
+			|| comparedHoughLine.distance < 60
+			|| (status == BEFORE_DUNE_STAGE_1 && std::max(pt1.y,pt2.y) < (src.rows / 3))
+			)
+			continue;
+		//if (status == BEFORE_DUNE_STAGE_1)
+		{
+			if (mode == LEFT_MODE)
 			{
-				if (data[cols] == 255 && countFlag == 0)
-				{
-					tempbegin = cols;
-					countFlag = 1;
-				}
-				if (countFlag)
-				{
-					//begin count
-					if (data[cols] == 255)
-						whitePixNum++;
-					//finish count
-					else
-					{
-						countFlag = 0;
-						//update
-						if (whitePixNum < thresh)
-						{
-							whitePixNum = 0;
-							continue;
-						}
-
-						if (whitePixNum > thresh)
-						{
-							if (tempbegin < 100 || tempbegin > end)
-							{
-								continue;
-							}
-							begin = tempbegin;
-							end = cols - 1;
-							break;
-						}
-					}
-				}
+				if (comparedHoughLine.intercept > verticalHoughLine.intercept)
+					verticalHoughLine = comparedHoughLine;
 			}
-		} while (whitePixNum > thresh && rows > 0);
+			else
+			{
+				if ((src.cols * comparedHoughLine.lineSlop + comparedHoughLine.intercept) > (src.cols * verticalHoughLine.lineSlop + verticalHoughLine.intercept))
+					verticalHoughLine = comparedHoughLine;
+			}
+		}
+		//else
+		{
 
+		}
 	}
 
-	if (line.size() > 30)
+	//find horizonal line
+	for (size_t i = 0; i < line.size(); i++)
 	{
-		lineCross = line[line.size() - 2];
-		GetyawAngle(line[5], line[line.size() - 20], VERTICAL_FENSE);
+		cv::Point2f pt1, pt2;
+		pt1 = cv::Point2f(line[i][0], line[i][1]);
+		pt2 = cv::Point2f(line[i][2], line[i][3]);
+
+		comparedHoughLine.distance = sqrt((pt2.y - pt1.y) * (pt2.y - pt1.y) + (pt2.x - pt1.x) * (pt2.x - pt1.x));
+		comparedHoughLine.index = i;
+		if (pt1.x != pt2.x)
+		{
+			comparedHoughLine.lineSlop = static_cast<float>(pt2.y - pt1.y) / (pt2.x - pt1.x);
+			comparedHoughLine.intercept = pt1.y - comparedHoughLine.lineSlop * pt1.x;
+			comparedHoughLine.lineAngle = atan(fabs(comparedHoughLine.lineSlop)) * 180 / CV_PI;
+		}
+		else
+		{
+			comparedHoughLine.lineSlop = 0;
+			comparedHoughLine.intercept = pt2.y;
+			comparedHoughLine.lineAngle = 90;
+		}	
+		
+		if (status == BEFORE_DUNE_STAGE_1 || status == BEFORE_DUNE_STAGE_2)
+		{
+			//horizonline have to be at the bottom of vertical fense
+			if (comparedHoughLine.lineSlop * (2 * mode - 1) >= 0
+				|| ((pt1.y - pt1.x * verticalHoughLine.lineSlop - verticalHoughLine.intercept) < 50 && (pt2.y - pt2.x * verticalHoughLine.lineSlop - verticalHoughLine.intercept) < 50)
+				|| comparedHoughLine.distance < 30
+				)
+				continue;
+		}
+		else if(status == BEFORE_DUNE_STAGE_3)
+		{
+			float distance1 = abs(pt1.x * verticalHoughLine.lineSlop + verticalHoughLine.intercept - pt1.y) / (sqrt(1 + verticalHoughLine.lineSlop * verticalHoughLine.lineSlop));
+			float distance2 = abs(pt2.x * verticalHoughLine.lineSlop + verticalHoughLine.intercept - pt2.y) / (sqrt(1 + verticalHoughLine.lineSlop * verticalHoughLine.lineSlop));
+			if (comparedHoughLine.lineSlop * (2 * mode - 1) >= 0
+				|| comparedHoughLine.lineAngle >= 60
+				|| (mode == RIGHT_MODE && std::max(pt1.x,pt2.x) > src.cols / 2)
+				|| (mode == LEFT_MODE && std::min(pt1.x, pt2.x) < src.cols / 2)
+				|| (distance1 > 150.0f && distance2 > 150.0f)
+				|| comparedHoughLine.distance < 10
+				)
+				continue;
+		}
+		else
+		{
+			if (comparedHoughLine.lineSlop * (2 * mode - 1) >= 0
+				|| ((pt1.y - pt1.x * verticalHoughLine.lineSlop - verticalHoughLine.intercept) > 50 || (pt2.y - pt2.x * verticalHoughLine.lineSlop - verticalHoughLine.intercept) > 50)
+				|| comparedHoughLine.distance < 30
+				)
+			continue;
+		}
+
+		if ((pt1.x * comparedHoughLine.lineSlop + comparedHoughLine.intercept) > (pt1.x * horizonalHoughLine.lineSlop + horizonalHoughLine.intercept))
+			horizonalHoughLine = comparedHoughLine;
+
 	}
-	else
+	if (line.size() != 0)
 	{
-		cout << "Do not find lineCross." << endl;
-		cout << line[line.size() - 1].y << endl;
+		if (verticalHoughLine.distance != 0 && horizonalHoughLine.distance != 0)
+		{
+			filterLines.push_back(line[verticalHoughLine.index]);
+			filterLines.push_back(line[horizonalHoughLine.index]);
+
+			cv::Point2f pt1, pt2, pt3, pt4;
+			//vertical fense point
+			pt1 = cv::Point2f(filterLines[0][0], filterLines[0][1]);
+			pt2 = cv::Point2f(filterLines[0][2], filterLines[0][3]);
+			//horizonal line point
+			pt3 = cv::Point2f(filterLines[1][0], filterLines[1][1]);
+			pt4 = cv::Point2f(filterLines[1][2], filterLines[1][3]);
+			targetFoundFlag = true;
+			if (status == BEFORE_DUNE_STAGE_1 || status == PASSING_DUNE || status == BEFORE_DUNE_STAGE_2)
+			{
+				if(status == PASSING_DUNE)
+				{
+					int cols = pt1.x / 2 + pt2.x / 2;
+					int rows = pt1.y / 2 + pt2.y / 2;
+					int whitePixNum = 0;
+					for (int i = 0; i < 10; i++)
+					{
+						if (src.at<uchar>(rows++, cols) == 255)
+							whitePixNum++;
+					}
+					if (whitePixNum > 5)
+						farLineFlag = true;
+					else
+						farLineFlag = false;
+					fenseCorner = GetCrossPoint(pt1, pt2, pt3, pt4);
+					cv::circle(canny, fenseCorner, 5, 255, -1);
+				}
+				else
+				{
+									
+					fenseCorner = GetCrossPoint(pt1, pt2, pt3, pt4);
+					cv::circle(canny, fenseCorner, 5, 255, -1);
+				}
+			}		
+			else 
+			{
+				linePt1 = pt1;
+				linePt2 = pt2;
+				frontTarget.x = (pt1.x + pt2.x) / 2.0;
+				frontTarget.y = (pt1.y + pt2.y) / 2.0;
+				besideTarget.x = (pt3.x + pt4.x) / 2.0;
+				besideTarget.y = (pt3.y + pt4.y) / 2.0;
+				cv::circle(canny, frontTarget, 5, 255, -1);
+				cv::circle(canny, besideTarget, 5, 255, -1);
+			}	
+			
+			cv::line(canny, pt1, pt2, 255, 5, 8);
+			cv::line(canny, pt3, pt4, 255, 2, 8);
+			
+		}
+		else if (verticalHoughLine.distance != 0)
+		{
+			errorTime++;
+			cout << "error1\n";
+			targetFoundFlag = false;
+		}
+		else
+		{
+			errorTime++;
+			cout << "error2\n";
+			targetFoundFlag = false;
+		}
 	}
-
-	cv::circle(maskImage, lineCross, 5, 255, -1);
-	line.clear();
-
-	cout << "x: " << lineCross.x << " y: " << lineCross.y << endl;
-
-	imshow("lineCross", maskImage);
-
-	cvWaitKey(1);
+	cout << "errorTime: " << errorTime;
+	cv::imshow("canny", canny);
+	cv::imshow("lineBeforeMerge", lineBeforeMerge);
+	cv::imshow("lineAfterMerge", lineAfterMerge);
+	cv::waitKey(1);
 }
 void ActD435::FindLineEnd(void)
 {
@@ -1166,7 +1284,7 @@ void ActD435::FindHorizonalHoughLine(cv::Mat& src, int flag)
 		{
 			if (comparedHoughLine.lineAngle > 50.0f
 				|| comparedHoughLine.lineSlop * (2 * mode - 1) > 0.0f
-				|| (flag == 0 && std::max(line[i][1], line[i][3]) < src.rows / 2)
+				|| (flag == 0 && std::max(line[i][1], line[i][3]) < src.rows / 3)
 				)
 			{
 				continue;
@@ -1480,7 +1598,7 @@ cv::Point3f ActD435::GetIrCorrdinate(cv::Point2f pt)
 
 	rs2_project_color_pixel_to_depth_pixel(depth_pixel, data, 0.001, 0.1, 2.5, &depth_intrin, &color_intrin, &color2depth_extrin, &depth2color_extrin, color_pixel);
 
-	float depth = data[(int)depth_pixel[1] * depth_intrin.width + (int)depth_pixel[0]];
+	float depth = 1.03 * data[(int)depth_pixel[1] * depth_intrin.width + (int)depth_pixel[0]];
 
 	rs2_deproject_pixel_to_point(point, &depth_intrin, depth_pixel, depth);
 
@@ -1508,7 +1626,7 @@ float ActD435::GetDepth(cv::Point2f& pt,cv::Point3f& pt1)
 	if (status == BEFORE_GRASSLAND_STAGE_2)
 	{
 		realDistance = (sqrt(pt1.z * pt1.z + pt1.x * pt1.x) + pillarRadius) * cos(cameraYawAngle + angle);
-		nowXpos = (sqrt(pt1.z * pt1.z + pt1.x * pt1.x) + pillarRadius) * sin(cameraYawAngle + angle);
+		nowXpos = (sqrt(pt1.z * pt1.z + pt1.x * pt1.x + pt1.y * pt1.y) + pillarRadius) * sin(cameraYawAngle + angle);
 	}
 	else
 	{
@@ -1520,7 +1638,7 @@ float ActD435::GetDepth(cv::Point2f& pt,cv::Point3f& pt1)
 	if(status == PASSING_GRASSLAND_STAGE_2 && farLineFlag)
 		realDistance -= 30;
 #ifdef DEBUG
-	cout << "distance: " << sqrt(pt1.z * pt1.z + pt1.x * pt1.x) << endl;
+	cout << "distance: " << sqrt(pt1.z * pt1.z + pt1.x * pt1.x + pt1.y * pt1.y) << endl;
 	cout << "nowXpos: " << nowXpos << endl;
 	cout << "depth: " << pt1.z << endl;
 	cout << "angle: " << angle * 180 / CV_PI << endl;
@@ -1647,6 +1765,155 @@ void ActD435::threshold_with_mask(cv::Mat& src, cv::Mat& dst, cv::Mat& mask, int
 		threshold(src, dst, th, 255, CV_THRESH_BINARY_INV);
 	}
 }
+
+void ActD435::mergeLine(vector<cv::Vec4i>& src, float angle, float dist)
+{
+	vector<cv::Vec4i> filterLine;
+	vector<cv::Vec4i> matchLine;
+	for (size_t i = 0; i < src.size(); ++i)
+	{
+		float angle = 0;
+		float lineSlop = 0;
+		float distance = 0;
+		float interception = 0;
+		cv::Point pt1, pt2;
+		pt1 = cv::Point(src[i][0], src[i][1]);
+		pt2 = cv::Point(src[i][2], src[i][3]);
+		if (pt1.x != pt2.x)
+		{
+			lineSlop = static_cast<float>(pt2.y - pt1.y) / (pt2.x - pt1.x);
+			angle = atan(fabs(static_cast<float>(pt2.y - pt1.y) / (pt2.x - pt1.x))) * 180 / CV_PI;
+			interception = pt1.y - lineSlop * pt1.x;
+		}
+		else
+		{
+			angle = 90;
+			interception = 0;
+		}
+		distance = sqrt((pt2.y - pt1.y) * (pt2.y - pt1.y) + (pt2.x - pt1.x) * (pt2.x - pt1.x));
+
+
+		for (size_t j = i + 1; j < src.size(); ++j)
+		{
+			cv::Point pt3, pt4;
+			pt3 = cv::Point(src[j][0], src[j][1]);
+			pt4 = cv::Point(src[j][2], src[j][3]);
+			float lineSlopComp = 0;
+			float angleComp = 0;
+			float interceptionComp = 0;
+			float distanceComp = 0;
+			if (pt3.x != pt4.x)
+			{
+				lineSlopComp = static_cast<float>(pt4.y - pt3.y) / (pt4.x - pt3.x);
+				angleComp = atan(fabs(lineSlopComp)) * 180 / CV_PI;
+				interceptionComp = pt3.y - lineSlop * pt3.x;
+			}
+			else
+			{
+				angleComp = 90;
+				interceptionComp = 0;
+			}
+			distanceComp = sqrt((pt2.y - pt1.y) * (pt2.y - pt1.y) + (pt2.x - pt1.x) * (pt2.x - pt1.x));
+			if (fabs(angleComp - angle) < angle && lineSlop * lineSlopComp >= 0)
+			{
+				if (angle != 90 && angle != 90)
+				{
+					if (fabs(interceptionComp - interception) / sqrt(1 + lineSlopComp * lineSlopComp) < dist)
+					{
+						if (distanceComp > distance)
+						{
+							cv::Point pt5, pt6;
+							int xmin = std::min(std::min(pt1.x, pt2.x), std::min(pt3.x, pt4.x));
+							int xmax = std::max(std::max(pt1.x, pt2.x), std::max(pt3.x, pt4.x));
+
+							if (pt1.x == xmin)
+								pt5 = pt1;
+							else if (pt2.x == xmin)
+								pt5 = pt2;
+							else if (pt3.x == xmin)
+								pt5 = pt3;
+							else
+								pt5 = pt4;
+
+							if (pt1.x == xmax)
+								pt6 = pt1;
+							else if (pt2.x == xmax)
+								pt6 = pt2;
+							else if (pt3.x == xmax)
+								pt6 = pt3;
+							else
+								pt6 = pt4;
+							cv::Vec4i l(pt5.x, pt5.y, pt6.x, pt6.y);
+							src[j] = l;
+							src.erase(src.begin() + i);
+							i--;
+							break;
+						}
+						else
+						{
+							cv::Point pt5, pt6;
+							int xmin = std::min(std::min(pt1.x, pt2.x), std::min(pt3.x, pt4.x));
+							int xmax = std::max(std::max(pt1.x, pt2.x), std::max(pt3.x, pt4.x));
+
+							if (pt1.x == xmin)
+								pt5 = pt1;
+							else if (pt2.x == xmin)
+								pt5 = pt2;
+							else if (pt3.x == xmin)
+								pt5 = pt3;
+							else
+								pt5 = pt4;
+
+							if (pt1.x == xmax)
+								pt6 = pt1;
+							else if (pt2.x == xmax)
+								pt6 = pt2;
+							else if (pt3.x == xmax)
+								pt6 = pt3;
+							else
+								pt6 = pt4;
+							cv::Vec4i l(pt5.x, pt5.y, pt6.x, pt6.y);
+							src[i] = l;
+							src.erase(src.begin() + j);
+							j--;
+							continue;
+						}
+					}
+				}
+				else
+				{
+					if (fabs(pt1.x + pt2.x - pt3.x - pt4.x) / 2 < 5)
+					{
+						if (distanceComp > distance)
+						{
+							src.erase(src.begin() + i);
+							i--;
+							break;
+						}
+						else
+						{
+							src.erase(src.begin() + j);
+							j--;
+							continue;
+						}
+					}
+				}
+			}
+			else
+			{
+				continue;
+			}
+		}
+	}
+}
+void ActD435::drawHoughLines(vector<cv::Vec4i>& src, cv::Mat& draw)
+{
+	for (size_t i = 0; i < src.size(); i++)
+	{
+		cv::Vec4i l = src[i];
+		cv::line(draw, cv::Point(l[0], l[1]), cv::Point(l[2], l[3]), 255, 2, CV_AA);
+	}
+}
 //======================================================
 
 // getColorTexture
@@ -1739,23 +2006,7 @@ std::tuple<uint8_t, uint8_t, uint8_t> ActD435::getColorTexture(rs2::video_frame 
 // pointsToPointCloud
 // - For point cloud without color information
 //===================================================
-mb_cuda::thrustCloudT ActD435::pointsToPointCloud(const rs2::points& points)
-{
-	mb_cuda::thrustCloudT thrust_cloud;
-	thrust_cloud.resize(points.size());
 
-
-	auto ptr = points.get_vertices();
-	for (auto& p : thrust_cloud)
-	{
-		p.x = ptr->x;
-		p.y = ptr->y;
-		p.z = ptr->z*1.015;
-	
-		ptr++;
-	}
-	return thrust_cloud;
-}
 pPointCloud ActD435::pointsToPCLPointCloud(const rs2::points& points)
 {
 	pPointCloud cloud(new pointCloud);
@@ -1784,4 +2035,95 @@ pPointCloud ActD435::pointsToPCLPointCloud(const rs2::points& points)
 	}
 	cout << "count: " << count << endl;
 	return cloud;
+}
+void extractPointWithRoiGround(const vertex* ptr, const ObjectROI *objectRoi, pPointCloud cloud)
+{
+	//cv::Point2f point=cv::Point2f(x,z);
+	//getRectabgel(objectRoi);
+
+	if (ptr->x > objectRoi->xMin && ptr->x < objectRoi->xMax && ptr->z < objectRoi->zMax && ptr->z > objectRoi->zMin)
+	{
+		tmpPoint.x = ptr->x;
+		tmpPoint.y = ptr->y;
+		tmpPoint.z = ptr->z- 0.0042;
+		//tmpPoint.z = z;
+
+		cloud->points.push_back(tmpPoint);
+	}
+
+}
+void extractPointWithRoi(const vertex* ptr, const ObjectROI *objectRoi, pPointCloud cloud, float roteAngle)
+{
+	rotex = cos(roteAngle)*ptr->x + sin(roteAngle)*ptr->z;
+	rotez = -sin(roteAngle)*ptr->x + cos(roteAngle)*ptr->z;
+
+	if (rotex > objectRoi->xMin && rotex < objectRoi->xMax && rotez < objectRoi->zMax && rotez > objectRoi->zMin)
+	{
+		tmpPoint.x = ptr->x;
+		tmpPoint.y = ptr->y;
+		tmpPoint.z = ptr->z*1.00f;
+		cloud->points.push_back(tmpPoint);
+
+	}
+
+}
+
+void ActD435::pointsToPointCloud(const rs2::points& points)
+{
+	auto ptr = points.get_vertices();
+
+	if (!initFlag&&status)
+	{
+		while (ifUpdate)
+		{
+		}
+		mutex4.lock();
+		ifUpdate = true;
+	}
+
+	groundCloud->clear();
+	fenseCloud->clear();
+	duneCloud->clear();
+	if (fenseROI.zMax < 1.0f)
+		fenseROI.zMax = 1.0f;
+	fenseROI.zMin = 0.0f;
+//	cout << "fenseROI " << fenseROI.xMin << " " << fenseROI.xMax << " " << fenseROI.zMin << " " << fenseROI.zMax << endl;
+//	cout << "duneROI " << duneROI.xMin << " " << duneROI.xMax << " " << duneROI.zMin << " " << duneROI.zMax << endl;
+	start = chrono::steady_clock::now();
+//	cout << "rotate angle in thread2 " << roteAngle << endl;
+	//fenseROI.xMax += 0.2;
+	//fenseROI.xMin -= 0.2;
+	for (size_t i = 0; i < points.size(); ++i)
+	{
+		//pointGet(ptr->x, ptr->y, ptr->z,groundPoint,fensePoint,dunePoint);	
+		extractPointWithRoiGround(ptr, &groundROI, groundCloud);
+
+		if (status == 1)
+		{
+			extractPointWithRoi(ptr, &fenseROI, fenseCloud, roteAngle);
+			if(addDune)
+			extractPointWithRoi(ptr, &duneROI, duneCloud, roteAngle);
+		}
+		else if (status == 2)
+		{
+			extractPointWithRoi(ptr, &fenseROI, fenseCloud, roteAngle);
+			extractPointWithRoi(ptr, &duneROI, duneCloud, roteAngle);
+		}
+		else if (status == 3)
+		{
+			extractPointWithRoi(ptr, &duneROI, duneCloud, roteAngle);
+		}
+		ptr++;
+	}
+	if (!initFlag&&status)
+	{
+		mutex4.unlock();
+	}
+	stop = chrono::steady_clock::now();
+	auto totalTime = chrono::duration_cast<chrono::microseconds>(stop - start);
+	cout << "ALLttime" << double(totalTime.count()) / 1000.0f << endl;
+	cout << "origenfense size" << fenseCloud->points.size() << endl;
+	cout << "origenground size" << groundCloud->points.size() << endl;
+	cout << "origendune size" << duneCloud->points.size() << endl;
+
 }

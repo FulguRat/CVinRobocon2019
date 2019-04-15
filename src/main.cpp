@@ -4,7 +4,7 @@
 #include "robot_locator.h"
 #include "kalman_filter.h"
 #include "main.h"
-#include <thread>
+
 
 using namespace std;
 using namespace std::chrono;
@@ -30,10 +30,10 @@ int main(int argc, char* argv[])
 	auto totalTime2 = chrono::duration_cast<chrono::microseconds>(stop - start);
 	auto totalTime3 = chrono::duration_cast<chrono::microseconds>(stop - start);
 #endif // DEBUG
-
+ 
 
 	distancefilter.initKalmanFilter(2, 1, (cv::Mat_<float>(2, 2) << 1, 0.3, 0, 1), (cv::Mat_<float>(1, 2) << 1, 0), 1e-5, 1e-2, 0.1);
-#ifdef __linux__
+#ifndef __linux__
 	std::cout << "[INFO]" << "serial init...\n";
 	serial::Serial my_serial("/dev/ttyTHS2", 115200, serial::Timeout::simpleTimeout(2));
 	if(my_serial.isOpen())
@@ -61,18 +61,14 @@ int main(int argc, char* argv[])
 	//mode=0;
 	thread cloudPointPreprocess(&RobotLocator::cloudPointPreprocess, &fajLocator);
 	cloudPointPreprocess.detach();
-	fajLocator.status=STARTUP_INITIAL;
 	fajLocator.updatemodeROI();
+	thread cloudUpdate(&RobotLocator::cloudUpdate, &fajLocator);
+	cloudUpdate.detach();
+
 	while (!fajLocator.isStoped())
 	{
-		if(fajLocator.status < PASSING_DUNE && fajLocator.status > STARTUP_INITIAL) 
-		{
-			startt = chrono::steady_clock::now();
-			fajLocator.updateCloud();
-			fajLocator.preProcess();
-		}
-		else
-			startt = chrono::steady_clock::now();
+
+		startt = chrono::steady_clock::now();
 
 		fajLocator.segmentStatus = true;
 		fajD435.status = fajLocator.status;
@@ -84,19 +80,12 @@ int main(int argc, char* argv[])
 		{
 			
 			case STARTUP_INITIAL:
-				fajLocator.status = BEFORE_GRASSLAND_STAGE_1;
-				if (fajLocator.status < PASSING_DUNE)
-					fajD435.status = PASSING_DUNE;
+				fajLocator.status = BEFORE_DUNE_STAGE_3;
+				fajD435.status = fajLocator.status;					
+				if(fajLocator.status < PASSING_DUNE)
+					fajD435.xkFlag == false;
 				else
-				{
-					fajD435.status = fajLocator.status;
-					std::unique_lock<std::mutex> lk(fajD435.mutex2);
-					fajD435.xkFlag = true;
-					cout << "xkFLag true" << endl;
-					lk.unlock();
-					fajD435.cond.notify_one();	
-				}
-				
+					fajD435.xkFlag == true;
 				break;
 
 			case BEFORE_DUNE_STAGE_1:
@@ -136,7 +125,7 @@ int main(int argc, char* argv[])
 				break;
 
 			case BONE_RECOGNITION:
-#ifdef __linux__		
+#ifndef __linux__		
 				tensorRT.srcImg = mvCamera.getImage();
 				//cap >> tensorRT.srcImg;
 				//cv::imshow("src",tensorRT.srcImg);
@@ -160,32 +149,20 @@ int main(int argc, char* argv[])
 				break;
 			case WAIT_STATUS:
 			{
-#ifdef __linux__
+#ifndef __linux__
 				std::cout << "waitmain...\n";
 				UpdateStatus(serialPtr,&fajLocator.status,&mode);
-				std::unique_lock<std::mutex> lk(fajD435.mutex2);
 				
 				if(fajLocator.status != WAIT_STATUS)
 				{
+					fajD435.status = fajLocator.status;
 					if (fajLocator.status < PASSING_DUNE)
 					{
-						fajD435.status = PASSING_DUNE;
 						fajLocator.updatemodeROI();
+						fajD435.xkFlag == false;
 					}	
 					else
-					{
-						fajD435.status = fajLocator.status;
-						fajD435.xkFlag = true;
-						cout << "xkFLag true" << endl;
-						lk.unlock();
-						fajD435.cond.notify_one();	
-					}
-				}
-				else
-				{
-			
-					fajD435.xkFlag = false;
-					lk.unlock();
+						fajD435.xkFlag == true;
 				}
 #endif
 			}
@@ -194,7 +171,7 @@ int main(int argc, char* argv[])
 			default:
 				break;
 		}
-#ifdef __linux__
+#ifndef __linux__
 		if(fajLocator.status != WAIT_STATUS)
 			UpdateStatus(serialPtr,&fajLocator.status,&mode);
 #endif
@@ -206,7 +183,7 @@ int main(int argc, char* argv[])
 		//	xdistance=distancefilter.predictAndCorrect(Mat_<float>(1, 1)<<fajLocator.diatancemeasurement).at<float>(0,0);
 		if (fajLocator.status != STARTUP_INITIAL && fajLocator.status != BONE_RECOGNITION && fajLocator.status != WAIT_STATUS)
 		{
-			SendDatas(serialPtr, dbStatus, frontDist, lateralDist, float(totalTime.count())/1000.0f);
+			//SendDatas(serialPtr, dbStatus, frontDist, lateralDist, float(totalTime.count())/1000.0f);
 		}
 
 #ifdef DEBUG

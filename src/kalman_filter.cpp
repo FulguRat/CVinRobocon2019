@@ -35,4 +35,4 @@ Mat kalman_filter::predictAndCorrect(Mat measurement)
 	KF.correct(measurement);
 
 	return KF.statePost;
-}
+} 
